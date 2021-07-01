@@ -18,6 +18,7 @@ void callbackFrameBufferSize(GLFWwindow *window, int width, int height) {
 }
 
 char *loadShader(const char *path) {
+	// Returns contents of text file in a stack-allocated char *
 	FILE *input = fopen(path, "r");
 	if (input == NULL)
 		return NULL;
@@ -26,22 +27,49 @@ char *loadShader(const char *path) {
 	fseek(input, 0, SEEK_END);
 	long int size = ftell(input);
 	rewind(input);
-	char *buffer = malloc(size * sizeof(char));
-	// TODO check if one more byte is needed for null termination with fread
+	char *buffer = malloc(size * sizeof(char) + 1);
 
 	fread(buffer, size * sizeof(char), 1, input);
 	return buffer;
+}
+
+int createShader(const char *path, GLenum type) {
+	// Creates and compiles a shader from a file
+	unsigned int idShader = glCreateShader(type);
+	const char *sourceShader = loadShader(path);
+	glShaderSource(idShader, 1, &sourceShader, NULL);
+	glCompileShader(idShader);
+	// TODO not elegant
+	free((char *)sourceShader);
+	// TODO check for errors
+	return idShader;
+}
+
+int createProgram(const char *vertexShaderPath, const char *fragmentShaderPath) {
+	// Creates and compiles the vertex and fragment shaders
+	unsigned int idVertexShader = createShader(vertexShaderPath, GL_VERTEX_SHADER);
+	unsigned int idFragmentShader = createShader(fragmentShaderPath, GL_FRAGMENT_SHADER);
+
+	// Creates and returns the final shader program ID
+	unsigned int idProgramShader = glCreateProgram();
+	glAttachShader(idProgramShader, idVertexShader);
+	glAttachShader(idProgramShader, idFragmentShader);
+	glLinkProgram(idProgramShader);
+	// TODO query errors
+
+	glDeleteShader(idVertexShader);
+	glDeleteShader(idProgramShader);
+	return idProgramShader;
 }
 
 int main() {
 	printf("NESRev v3.6\n");
 
 	// Initializes GLFW
+	glfwSetErrorCallback(callbackError);
 	if (!glfwInit())
 		return 1;
 	printf("GLFW initialized.\n");
-
-	glfwSetErrorCallback(callbackError);
 
 	// Creates a window and an OpenGL context
 	GLFWwindow *window = glfwCreateWindow(1920, 1080, "NESRev v3.6", NULL, NULL);
@@ -58,44 +86,15 @@ int main() {
 	
 
 	// Shader creation and compiling
-	// Creates and compiles the vertex and fragment shaders
-	const char *sourceVertexShader = loadShader("src/shaders/vertexMain.glsl");
-	// TODO make sure it is always freed
-	// TODO make it more elegant
-	unsigned int idVertexShader = glCreateShader(GL_VERTEX_SHADER);
-	glShaderSource(idVertexShader, 1, &sourceVertexShader, NULL);
-	glCompileShader(idVertexShader);
-	// TODO this isn't elegant
-	free((char *)sourceVertexShader);
-	// TODO query errors
-
-	const char *sourceFragmentShader = loadShader("src/shaders/vertexMain.glsl");
-	// TODO make sure it is always freed
-	// TODO make it more elegant
-	unsigned int idFragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-	glShaderSource(idFragmentShader, 1, &sourceFragmentShader, NULL);
-	glCompileShader(idFragmentShader);
-	// TODO this isn't elegant
-	free((char *)sourceFragmentShader);
-	// TODO query errors
-
-	// Creates the final shader program
-	unsigned int idProgramShader = glCreateProgram();
-	glAttachShader(idProgramShader, idVertexShader);
-	glAttachShader(idProgramShader, idFragmentShader);
-	glLinkProgram(idProgramShader);
-	// TODO query errors
-	glDeleteShader(idVertexShader);
-	glDeleteShader(idFragmentShader);
-
+	int idShaderProgram = createProgram("src/shaders/vertexMain.glsl", "src/shaders/fragmentMain.glsl");
 
 	// Vertex data, buffers and attributes set up
 	// Rectangle vertices in normalized device coordinates
 	float rectangle[VERTEX_SIZE * VERTEX_COUNT] = {
-		-1.0f, 1.0f, 0.0f,
-		0.0f, 1.0f, 0.0f,
+		-0.9f, 0.9f, 0.0f,
+		0.0f, 0.9f, 0.0f,
 		0.0f, 0.0f, 0.0f,
-		-1.0f, 0.0f, 0.0f
+		-0.9f, 0.0f, 0.0f
 	};
 
 	// Indices of vertices for two triangles forming the rectangle
@@ -137,11 +136,11 @@ int main() {
 		glClear(GL_COLOR_BUFFER_BIT);
 
 		// Drawing
-		glUseProgram(idProgramShader);
+		glUseProgram(idShaderProgram);
 		glBindVertexArray(idVertexArray);
 		glDrawElements(GL_TRIANGLES, (VERTEX_COUNT - 2) * 3, GL_UNSIGNED_INT, (void *)0);
 
-		glBindVertexArray(glGetAttribLocation(idProgramShader, "pos"));
+		glBindVertexArray(glGetAttribLocation(idShaderProgram, "pos"));
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
@@ -150,7 +149,7 @@ int main() {
 	glDeleteVertexArrays(1, &idVertexArray);
 	glDeleteBuffers(1, &idVertexBuffer);
 	glDeleteBuffers(1, &idElementBuffer);
-	glDeleteProgram(idProgramShader);
+	glDeleteProgram(idShaderProgram);
 
 	glfwTerminate();
 
