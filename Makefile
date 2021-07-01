@@ -1,4 +1,4 @@
-# Example output:
+# Example output (WIN32, default mode):
 # gcc -Wall -DWIN32 -Iinclude -c -o bin/main.o src/main.c
 # gcc -Wall -DWIN32 -o bin/nesrev bin/main.o -Llib -Llib/win32 -lglfw3 -lopengl32 -lgdi32
 
@@ -17,10 +17,10 @@ SRCFILES = $(wildcard $(SRCDIR)/*.c)
 OBJFILES = $(SRCFILES:$(SRCDIR)/%.c=$(BINDIR)/%.o)
 EXECUTABLE = $(BINDIR)/nesrev
 
-LIBRARIES = glfw3 opengl32
+LIBRARIES = glfw3 glew32 opengl32
 
 ifeq ($(OS),Windows_NT)
-	CCFLAGS += -DWIN32
+	CCFLAGS += -DWIN32 -DGLEW_STATIC
 	LIBDIR += $(BASELIBDIR)/win32
 	LIBRARIES += gdi32
 else
