@@ -7,9 +7,20 @@
 
 // Triangle vertices information
 #define VERTEX_COUNT 4
-#define VERTEX_SIZE 3
+#define VERTEX_SIZE 4
+#define RGB_LENGTH 3
+#define HEIGHT_PIXELS 3
+#define WIDTH_PIXELS 4
 
-void callbackError(int code, const char *description) {
+// A polygon with n sides can always be dissected in (n - 2) triangles, so the number of indices for such a dissected
+// polygon is its number of triangles multiplied by the number of vertices of a triangle, giving 3(n - 2)
+#define INDICES_PER_POLYGON (VERTEX_COUNT - 2) * 3
+
+void callbackErrorGL(GLenum source, GLenum type, GLenum id, GLenum severity, GLsizei length, const GLchar *message, const void *userParam) {
+	printf("GL Callback 0x%X : %s (severity : 0x%X)\n", type, message, severity);
+}
+
+void callbackErrorGLFW(int code, const char *description) {
 	printf("GLFW Error %i : %s\n", code, description);
 }
 
@@ -39,9 +50,20 @@ int createShader(const char *path, GLenum type) {
 	const char *sourceShader = loadShader(path);
 	glShaderSource(idShader, 1, &sourceShader, NULL);
 	glCompileShader(idShader);
+	
+	int status;
+	glGetShaderiv(idShader, GL_COMPILE_STATUS, &status);
+	if (status == 0) {
+		int msgLength;
+		glGetShaderiv(idShader, GL_INFO_LOG_LENGTH, &msgLength);
+		char *msg = malloc(msgLength);
+		glGetShaderInfoLog(idShader, msgLength, &msgLength, msg);
+		printf("GL Shader Compilation Error : %s\n", msg);
+		free(msg);
+	}
+
 	// TODO not elegant
 	free((char *)sourceShader);
-	// TODO check for errors
 	return idShader;
 }
 
@@ -55,7 +77,17 @@ int createProgram(const char *vertexShaderPath, const char *fragmentShaderPath) 
 	glAttachShader(idProgramShader, idVertexShader);
 	glAttachShader(idProgramShader, idFragmentShader);
 	glLinkProgram(idProgramShader);
-	// TODO query errors
+
+	int status;
+	glGetProgramiv(idProgramShader, GL_LINK_STATUS, &status);
+	if (status == 0) {
+		int msgLength;
+		glGetProgramiv(idProgramShader, GL_INFO_LOG_LENGTH, &msgLength);
+		char *msg = malloc(msgLength);
+		glGetProgramInfoLog(idProgramShader, msgLength, &msgLength, msg);
+		printf("GL Program Linking Error : %s\n", msg);
+		free(msg);
+	}
 
 	glDeleteShader(idVertexShader);
 	glDeleteShader(idProgramShader);
@@ -66,7 +98,7 @@ int main() {
 	printf("NESRev v3.6\n");
 
 	// Initializes GLFW
-	glfwSetErrorCallback(callbackError);
+	glfwSetErrorCallback(callbackErrorGLFW);
 	if (!glfwInit())
 		return 1;
 	printf("GLFW initialized.\n");
@@ -84,26 +116,42 @@ int main() {
 		return 2;
 	printf("GLEW initialized.\n");
 	
+	glEnable(GL_DEBUG_OUTPUT);
+	glDebugMessageCallback(callbackErrorGL, NULL);
 
 	// Shader creation and compiling
 	int idShaderProgram = createProgram("src/shaders/vertexMain.glsl", "src/shaders/fragmentMain.glsl");
 
-	// Vertex data, buffers and attributes set up
-	// Rectangle vertices in normalized device coordinates
-	float rectangle[VERTEX_SIZE * VERTEX_COUNT] = {
-		-0.9f, 0.9f, 0.0f,
-		0.0f, 0.9f, 0.0f,
-		0.0f, 0.0f, 0.0f,
-		-0.9f, 0.0f, 0.0f
-	};
-
 	// Indices of vertices for two triangles forming the rectangle
-	// A polygon with n sides can always be dissected in (n - 2) triangles, so the number of indices for such a dissected polygon is
-	// its number of triangles multiplied by the number of vertices of a triangle, giving 3(n - 2)
-	unsigned int indices[(VERTEX_COUNT - 2) * 3] = {
-		0, 1, 2,
-		0, 2, 3
-	};
+	unsigned int indices[INDICES_PER_POLYGON * HEIGHT_PIXELS * WIDTH_PIXELS];
+
+	// Vertex data, buffers and attributes set up
+	// All rectangle vertices in normalized device coordinates and their corresponding rectangle index
+	// TODO deal with VERTEX_SIZE
+	float vertices[HEIGHT_PIXELS][WIDTH_PIXELS][VERTEX_COUNT][VERTEX_SIZE];
+	float pixelWidthNormalized = 1.0f / WIDTH_PIXELS;
+	float pixelHeightNormalized = 1.0f / HEIGHT_PIXELS;
+
+	for (int i = 0; i < HEIGHT_PIXELS; i++) {
+		for (int j = 0; j < WIDTH_PIXELS; j++) {
+			int currentPixel = i * HEIGHT_PIXELS + j;
+			for (int k = 0; k < VERTEX_COUNT; k++) {
+				// TODO if possible, deal with repetition
+				vertices[i][j][k][0] = pixelWidthNormalized * (j - 1); // x coordinate
+				vertices[i][j][k][1] = pixelHeightNormalized * (i - 1); // y coordinate
+				vertices[i][j][k][2] = 1.0f; // z coordinate
+				vertices[i][j][k][3] = (float)currentPixel; // rectangle index
+			}
+			// For each rectangle, this fills the indices array with the correct indices to dissect it into two triangles
+			// TODO this looks like magic
+			indices[currentPixel * INDICES_PER_POLYGON] = currentPixel * INDICES_PER_POLYGON - 1;
+			indices[currentPixel * INDICES_PER_POLYGON] = currentPixel * INDICES_PER_POLYGON;
+			indices[currentPixel * INDICES_PER_POLYGON] = currentPixel * INDICES_PER_POLYGON + 1;
+			indices[currentPixel * INDICES_PER_POLYGON] = currentPixel * INDICES_PER_POLYGON - 1;
+			indices[currentPixel * INDICES_PER_POLYGON] = currentPixel * INDICES_PER_POLYGON + 1;
+			indices[currentPixel * INDICES_PER_POLYGON] = currentPixel * INDICES_PER_POLYGON + 2;
+		}
+	}
 
 	// Creates and binds a vertex array object containing a vertex buffer object and an element buffer object to pass vertex data
 	unsigned int idVertexArray, idVertexBuffer, idElementBuffer;
@@ -115,15 +163,20 @@ int main() {
 
 	// Sends vertex data
 	glBindBuffer(GL_ARRAY_BUFFER, idVertexBuffer);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(rectangle), rectangle, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
 	// Sends indices data
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, idElementBuffer);
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 
 	// Specifies the interpretation of vertex data
-	glVertexAttribPointer(0, VERTEX_SIZE, GL_FLOAT, false, VERTEX_SIZE * sizeof(float), (void *)0);
-	glEnableVertexAttribArray(0);
+	glUseProgram(idShaderProgram);
+	unsigned int idPosition = glGetAttribLocation(idShaderProgram, "pos");
+	unsigned int idIndex = glGetAttribLocation(idShaderProgram, "index");
+	glVertexAttribPointer(idPosition, VERTEX_SIZE - 1, GL_FLOAT, false, VERTEX_SIZE * sizeof(float), (void *)0);
+	glEnableVertexAttribArray(idPosition);
+	glVertexAttribPointer(idIndex, 1, GL_FLOAT, true, VERTEX_SIZE * sizeof(float), (void *)((VERTEX_SIZE - 1) * sizeof(float)));
+	glEnableVertexAttribArray(idIndex);
 
 	// Unbinds vertex buffer and vertex array objects
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -131,6 +184,8 @@ int main() {
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
 
+	unsigned int idColors = glGetAttribLocation(idShaderProgram, "colors");
+	float colors[HEIGHT_PIXELS * WIDTH_PIXELS];
 	// Main loop
 	while (!glfwWindowShouldClose(window)) {
 		glClear(GL_COLOR_BUFFER_BIT);
@@ -138,9 +193,19 @@ int main() {
 		// Drawing
 		glUseProgram(idShaderProgram);
 		glBindVertexArray(idVertexArray);
+		
+		// Updates every pixel's color
+		for (int i = 0; i < HEIGHT_PIXELS; i++) {
+			for (int j = 0; j < WIDTH_PIXELS; j++) {
+				colors[HEIGHT_PIXELS * i + j] = HEIGHT_PIXELS / i;
+			}
+		}
+		// TODO the type casting is ugly
+		glUniform1fv(idColors, HEIGHT_PIXELS * WIDTH_PIXELS, (const float *)&colors);
+
 		glDrawElements(GL_TRIANGLES, (VERTEX_COUNT - 2) * 3, GL_UNSIGNED_INT, (void *)0);
 
-		glBindVertexArray(glGetAttribLocation(idShaderProgram, "pos"));
+		glBindVertexArray(0);
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
