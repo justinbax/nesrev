@@ -30,7 +30,7 @@ void callbackFrameBufferSize(GLFWwindow *window, int width, int height) {
 
 char *loadShader(const char *path) {
 	// Returns contents of text file in a stack-allocated char *
-	FILE *input = fopen(path, "r");
+	FILE *input = fopen(path, "rb"); // File is opened in binary mode to avoid problems with reading CRLF when getting file size but only reading LF when calling fread
 	if (input == NULL)
 		return NULL;
 
@@ -38,9 +38,13 @@ char *loadShader(const char *path) {
 	fseek(input, 0, SEEK_END);
 	long int size = ftell(input);
 	rewind(input);
-	char *buffer = malloc(size * sizeof(char) + 1);
+	char *buffer = malloc((size + 1) * sizeof(char));
+	if (buffer == NULL)
+		return NULL;
 
 	fread(buffer, size * sizeof(char), 1, input);
+	buffer[size] = '\0'; // TODO this can be improved
+	fclose(input); // TODO make sure this is always closed
 	return buffer;
 }
 
@@ -129,27 +133,30 @@ int main() {
 	// All rectangle vertices in normalized device coordinates and their corresponding rectangle index
 	// TODO deal with VERTEX_SIZE
 	float vertices[HEIGHT_PIXELS][WIDTH_PIXELS][VERTEX_COUNT][VERTEX_SIZE];
-	float pixelWidthNormalized = 1.0f / WIDTH_PIXELS;
-	float pixelHeightNormalized = 1.0f / HEIGHT_PIXELS;
+	// Normalized width and height are 2/N instead of 1/N because normalized device coordinates range from [-1.0 ; 1.0], giving a total range of 2
+	float pixelWidthNormalized = 2.0f / WIDTH_PIXELS;
+	float pixelHeightNormalized = 2.0f / HEIGHT_PIXELS;
 
 	for (int i = 0; i < HEIGHT_PIXELS; i++) {
 		for (int j = 0; j < WIDTH_PIXELS; j++) {
-			int currentPixel = i * HEIGHT_PIXELS + j;
+			int currentPixel = i * WIDTH_PIXELS + j;
 			for (int k = 0; k < VERTEX_COUNT; k++) {
-				// TODO if possible, deal with repetition
-				vertices[i][j][k][0] = pixelWidthNormalized * (j - 1); // x coordinate
-				vertices[i][j][k][1] = pixelHeightNormalized * (i - 1); // y coordinate
-				vertices[i][j][k][2] = 1.0f; // z coordinate
-				vertices[i][j][k][3] = (float)currentPixel; // rectangle index
+				// TODO this looks like magic
+				// j + (k & 0b1) adds one to j when k mod 2 == 1. In other words, when k is for one of the right vertices, this adds 1 * pixelWidthNormalized to the x coordinate
+				vertices[i][j][k][0] = pixelWidthNormalized * (j + (k & 0b1)) - 1; // x coordinate
+				// i + (k > 1) adds one to i when k > 1. In other words, when k is for one of the top vertices, this adds 1 * pixelHeightNormalized to the y coordinates
+				vertices[i][j][k][1] = pixelHeightNormalized * (i + (k > 1)) - 1; // y coordinate
+				vertices[i][j][k][2] = 1; // z coordinate
+				vertices[i][j][k][3] = currentPixel; // rectangle index
 			}
 			// For each rectangle, this fills the indices array with the correct indices to dissect it into two triangles
 			// TODO this looks like magic
-			indices[currentPixel * INDICES_PER_POLYGON] = currentPixel * INDICES_PER_POLYGON - 1;
-			indices[currentPixel * INDICES_PER_POLYGON] = currentPixel * INDICES_PER_POLYGON;
-			indices[currentPixel * INDICES_PER_POLYGON] = currentPixel * INDICES_PER_POLYGON + 1;
-			indices[currentPixel * INDICES_PER_POLYGON] = currentPixel * INDICES_PER_POLYGON - 1;
-			indices[currentPixel * INDICES_PER_POLYGON] = currentPixel * INDICES_PER_POLYGON + 1;
-			indices[currentPixel * INDICES_PER_POLYGON] = currentPixel * INDICES_PER_POLYGON + 2;
+			indices[currentPixel * INDICES_PER_POLYGON] = currentPixel * VERTEX_COUNT; // first triangle : bottom-left
+			indices[currentPixel * INDICES_PER_POLYGON + 1] = currentPixel * VERTEX_COUNT + 1; // first triangle : bottom-right
+			indices[currentPixel * INDICES_PER_POLYGON + 2] = currentPixel * VERTEX_COUNT + 2; // first triangle : top-left
+			indices[currentPixel * INDICES_PER_POLYGON + 3] = currentPixel * VERTEX_COUNT + 1; // second triangle : bottom-right
+			indices[currentPixel * INDICES_PER_POLYGON + 4] = currentPixel * VERTEX_COUNT + 2; // second triangle : top-left
+			indices[currentPixel * INDICES_PER_POLYGON + 5] = currentPixel * VERTEX_COUNT + 3; // second triangle : top-right
 		}
 	}
 
@@ -184,8 +191,9 @@ int main() {
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
 
-	unsigned int idColors = glGetAttribLocation(idShaderProgram, "colors");
-	float colors[HEIGHT_PIXELS * WIDTH_PIXELS];
+	unsigned int idColors = glGetUniformLocation(idShaderProgram, "colors");
+	float colors[HEIGHT_PIXELS * WIDTH_PIXELS][3];
+	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 	// Main loop
 	while (!glfwWindowShouldClose(window)) {
 		glClear(GL_COLOR_BUFFER_BIT);
@@ -197,13 +205,15 @@ int main() {
 		// Updates every pixel's color
 		for (int i = 0; i < HEIGHT_PIXELS; i++) {
 			for (int j = 0; j < WIDTH_PIXELS; j++) {
-				colors[HEIGHT_PIXELS * i + j] = HEIGHT_PIXELS / i;
+				colors[WIDTH_PIXELS * i + j][0] = (float)(i + 1) / HEIGHT_PIXELS;
+				colors[WIDTH_PIXELS * i + j][1] = (float)(j + 1) / WIDTH_PIXELS;
+				colors[WIDTH_PIXELS * i + j][2] = 1.0;
 			}
 		}
 		// TODO the type casting is ugly
-		glUniform1fv(idColors, HEIGHT_PIXELS * WIDTH_PIXELS, (const float *)&colors);
+		glUniform3fv(idColors, HEIGHT_PIXELS * WIDTH_PIXELS, (const float *)&colors);
 
-		glDrawElements(GL_TRIANGLES, (VERTEX_COUNT - 2) * 3, GL_UNSIGNED_INT, (void *)0);
+		glDrawElements(GL_TRIANGLES, sizeof(vertices) / sizeof(float), GL_UNSIGNED_INT, (void *)0);
 
 		glBindVertexArray(0);
 

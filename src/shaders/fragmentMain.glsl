@@ -4,5 +4,5 @@ in float pixelNumber;
 out vec4 finalColor;
 
 void main() {
-	finalColor = vec4(colors[int(pixelNumber)], 1.0);
+	finalColor = vec4(colors[int(pixelNumber)].xyz, 1.0);
 }
