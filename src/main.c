@@ -9,12 +9,15 @@
 #define VERTEX_COUNT 4
 #define VERTEX_SIZE 3
 #define RGB_LENGTH 3
-#define HEIGHT_PIXELS 32
-#define WIDTH_PIXELS 30
+#define HEIGHT_PIXELS 64
+#define WIDTH_PIXELS 60
 
 // A polygon with n sides can always be dissected in (n - 2) triangles, so the number of indices for such a dissected
 // polygon is its number of triangles multiplied by the number of vertices of a triangle, giving 3(n - 2)
 #define INDICES_PER_POLYGON (VERTEX_COUNT - 2) * 3
+
+// Texture unit used to send pixel data to the fragment shader
+#define TEXTURE_UNIT 0
 
 void callbackErrorGL(GLenum source, GLenum type, GLenum id, GLenum severity, GLsizei length, const GLchar *message, const void *userParam) {
 	printf("GL Callback 0x%X : %s (severity : 0x%X)\n", type, message, severity);
@@ -98,7 +101,7 @@ int createProgram(const char *vertexShaderPath, const char *fragmentShaderPath) 
 	return idProgramShader;
 }
 
-int setupPixels() {
+const int setupPixels() {
 	// Indices of vertices for two triangles forming the rectangle
 	unsigned int indices[INDICES_PER_POLYGON * HEIGHT_PIXELS * WIDTH_PIXELS];
 
@@ -166,8 +169,9 @@ int main() {
 
 	// Shader creation and compiling
 	int idShaderProgram = createProgram("src/shaders/vertexMain.glsl", "src/shaders/fragmentMain.glsl");
+	glUseProgram(idShaderProgram);
 
-	// Creates and binds a vertex array object containing a vertex buffer object and an element buffer object to pass vertex data
+	// Creates and binds a vertex array object containing a vertex buffer object and an element buffer object to pass vertex data and a texture buffer to pass pixel colors
 	unsigned int idVertexArray, idVertexBuffer, idElementBuffer;
 	glGenVertexArrays(1, &idVertexArray);
 	glGenBuffers(1, &idVertexBuffer);
@@ -177,10 +181,22 @@ int main() {
 	glBindBuffer(GL_ARRAY_BUFFER, idVertexBuffer);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, idElementBuffer);
 
+	// Sets up communication with the fragment shader via a texture unit
+	// A texture is used to send the pixel data to the fragment shader as a sampler
+	unsigned int idFrameTexture;
+	glGenTextures(1, &idFrameTexture);
+	glActiveTexture(GL_TEXTURE0 + TEXTURE_UNIT);
+	glBindTexture(GL_TEXTURE_1D, idFrameTexture);
+	// TODO check what type of float needs to be used (maybe GL_RGB16F or GL_RGB8F are fine)
+	glTexStorage1D(GL_TEXTURE_1D, 1, GL_RGB32F, WIDTH_PIXELS * HEIGHT_PIXELS);
+	glBindTexture(GL_TEXTURE_1D, 0);
+
+	// By setting the uniform to 0, the sampler will be associated with GL_TEXTURE0 where the texture resides
+	glUniform1i(glGetUniformLocation(idShaderProgram, "textureSampler"), TEXTURE_UNIT);
+
 	const int verticesCount = setupPixels();
 
 	// Specifies the interpretation of vertex data
-	glUseProgram(idShaderProgram);
 	unsigned int idPosition = glGetAttribLocation(idShaderProgram, "pos");
 	glVertexAttribPointer(idPosition, VERTEX_SIZE, GL_FLOAT, false, VERTEX_SIZE * sizeof(float), (void *)0);
 	glEnableVertexAttribArray(idPosition);
@@ -190,9 +206,9 @@ int main() {
 	glBindVertexArray(0);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-
-	unsigned int idColors = glGetUniformLocation(idShaderProgram, "colors");
 	float colors[HEIGHT_PIXELS * WIDTH_PIXELS][3];
+
+	// Uncomment this to render in wireframe mode
 	// glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
 	// Main loop
@@ -211,8 +227,7 @@ int main() {
 				colors[WIDTH_PIXELS * i + j][2] = 0.0f;
 			}
 		}
-		// TODO the type casting is ugly
-		glUniform3fv(idColors, HEIGHT_PIXELS * WIDTH_PIXELS, (const float *)&colors);
+		glTexImage1D(GL_TEXTURE_1D, 0, GL_RGB, HEIGHT_PIXELS * WIDTH_PIXELS, 0, GL_RGB, GL_FLOAT, colors);
 
 		glDrawElements(GL_TRIANGLES, verticesCount, GL_UNSIGNED_INT, (void *)0);
 

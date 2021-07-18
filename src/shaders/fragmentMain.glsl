@@ -1,8 +1,10 @@
 #version 460
-uniform vec3 colors[32 * 30]; // TODO delete those magic numbers (HEIGHT_PIXELS and WIDTH_PIXELS) and maybe add default values
+uniform sampler1D textureSampler;
 in flat int pixelNumber;
 out vec4 finalColor;
 
 void main() {
-	finalColor = vec4(colors[pixelNumber].xyz, 1.0);
+	// TODO replace texelFetch with texture (a normalized coordinate will need to be passed instead of pixelNumber)
+	// finalColor = vec4(texelFetch(textureSampler, pixelNumber, 0).xyz, 1.0);
+	finalColor = vec4(texture(textureSampler, 0.0).xyz, 1.0);
 }
