@@ -6,11 +6,11 @@
 #include "GLFW/glfw3.h"
 
 // Triangle vertices information
-#define VERTEX_COUNT 4
-#define VERTEX_SIZE 3
-#define COLOR_COMPONENTS 3
-#define HEIGHT_PIXELS 5
-#define WIDTH_PIXELS 4
+#define VERTEX_COUNT 4 // Number of vertices
+#define VERTEX_SIZE 3 // Number of components to a position (in 3D space with x, y, z coordinates, is 3)
+#define COLOR_COMPONENTS 3 // Number of components to a color (RGB is 3, RGBA is 4)
+#define HEIGHT_PIXELS 240 // Number of pixels on the y axis
+#define WIDTH_PIXELS 256 // Number of pixels on the x axis
 
 // A polygon with n sides can always be dissected in (n - 2) triangles, so the number of indices for such a dissected
 // polygon is its number of triangles multiplied by the number of vertices of a triangle, giving 3(n - 2)
@@ -43,8 +43,10 @@ char *loadShader(const char *path) {
 	long int size = ftell(input);
 	rewind(input);
 	char *buffer = malloc((size + 1) * sizeof(char));
-	if (buffer == NULL)
+	if (buffer == NULL) {
+		fclose(input);
 		return NULL;
+	}
 
 	fread(buffer, size * sizeof(char), 1, input);
 	buffer[size] = '\0'; // TODO this can be improved
@@ -99,13 +101,21 @@ int createProgram(unsigned int idVertexShader, unsigned int idFragmentShader) {
 }
 
 const int setupPixels() {
+	// Sets up vertex information and sends it to bound array and element array buffers
+	// Returns the number of floats to read from vertex array buffer
 	// Indices of vertices for two triangles forming the rectangle
-	unsigned int indices[INDICES_PER_POLYGON * HEIGHT_PIXELS * WIDTH_PIXELS];
+	// This array is dynamically allocated to avoid memory depletion in the stack area for setupPixels
+	size_t indicesCount = INDICES_PER_POLYGON * HEIGHT_PIXELS * WIDTH_PIXELS;
+	unsigned int *indices = malloc(sizeof(float) * indicesCount);
 
 	// Vertex data, buffers and attributes set up
 	// All rectangle vertices in normalized device coordinates and their corresponding rectangle index
+	// This array is also dynamically allocated to avoid memory depletion in the stack area for setupPixels
 	// TODO deal with VERTEX_SIZE
-	float vertices[HEIGHT_PIXELS][WIDTH_PIXELS][VERTEX_COUNT][VERTEX_SIZE];
+	// TODO this looks horrible
+	// TODO make sure this is always freed
+	size_t verticesCount = HEIGHT_PIXELS * WIDTH_PIXELS * VERTEX_COUNT * VERTEX_SIZE;
+	float *vertices = malloc(sizeof(float) * verticesCount);
 	// Normalized width and height are 2/N instead of 1/N because normalized device coordinates range from [-1.0 ; 1.0], giving a total range of 2
 	float pixelWidthNormalized = 2.0f / WIDTH_PIXELS;
 	float pixelHeightNormalized = 2.0f / HEIGHT_PIXELS;
@@ -114,16 +124,16 @@ const int setupPixels() {
 		for (int j = 0; j < WIDTH_PIXELS; j++) {
 			int currentPixel = i * WIDTH_PIXELS + j;
 			for (int k = 0; k < VERTEX_COUNT; k++) {
-				// TODO this looks like magic
+				// TODO this looks like magic, both the left-hand and the right-hand
 				// j + (k & 0b1) adds one to j when k mod 2 == 1. In other words, when k is for one of the right vertices, this adds 1 * pixelWidthNormalized to the x coordinate
-				vertices[i][j][k][0] = pixelWidthNormalized * (j + (k & 0b1)) - 1; // x coordinate
+				vertices[((i * WIDTH_PIXELS + j) * VERTEX_COUNT + k) * VERTEX_SIZE + 0] = pixelWidthNormalized * (j + (k & 0b1)) - 1; // x coordinate
 				// i + (k > 1) adds one to i when k > 1. In other words, when k is for one of the top vertices, this adds 1 * pixelHeightNormalized to the y coordinates
-				vertices[i][j][k][1] = pixelHeightNormalized * (i + (k > 1)) - 1; // y coordinate
-				vertices[i][j][k][2] = 1; // z coordinate
+				vertices[((i * WIDTH_PIXELS + j) * VERTEX_COUNT + k) * VERTEX_SIZE + 1] = pixelHeightNormalized * (i + (k > 1)) - 1; // y coordinate
+				vertices[((i * WIDTH_PIXELS + j) * VERTEX_COUNT + k) * VERTEX_SIZE + 2] = 1; // z coordinate
 			}
 			// For each rectangle, this fills the indices array with the correct indices to dissect it into two triangles
 			// TODO this looks like magic
-			indices[currentPixel * INDICES_PER_POLYGON] = currentPixel * VERTEX_COUNT; // first triangle : bottom-left
+			indices[currentPixel * INDICES_PER_POLYGON + 0] = currentPixel * VERTEX_COUNT; // first triangle : bottom-left
 			indices[currentPixel * INDICES_PER_POLYGON + 1] = currentPixel * VERTEX_COUNT + 1; // first triangle : bottom-right
 			indices[currentPixel * INDICES_PER_POLYGON + 2] = currentPixel * VERTEX_COUNT + 2; // first triangle : top-left
 			indices[currentPixel * INDICES_PER_POLYGON + 3] = currentPixel * VERTEX_COUNT + 1; // second triangle : bottom-right
@@ -133,10 +143,14 @@ const int setupPixels() {
 	}
 
 	// Sends vertices and indices data
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+	// TODO the parameter for size is horrible
+	glBufferData(GL_ARRAY_BUFFER, sizeof(float) * verticesCount, vertices, GL_STATIC_DRAW);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(float) * indicesCount, indices, GL_STATIC_DRAW);
 
-	return sizeof(vertices) / sizeof(float);
+	free(indices);
+	free(vertices);
+
+	return verticesCount;
 }
 
 int main() {
@@ -205,7 +219,7 @@ int main() {
 
 	// Specifies the interpretation of vertex data
 	unsigned int idPosition = glGetAttribLocation(idShaderProgram, "pos");
-	glVertexAttribPointer(idPosition, VERTEX_SIZE, GL_FLOAT, false, VERTEX_SIZE * sizeof(float), (void *)0);
+	glVertexAttribPointer(idPosition, COLOR_COMPONENTS, GL_FLOAT, false, COLOR_COMPONENTS * sizeof(float), (void *)0);
 	glEnableVertexAttribArray(idPosition);
 
 	// Unbinds vertex buffer and vertex array objects
@@ -247,7 +261,8 @@ int main() {
 		glfwSwapBuffers(window);
 		glfwPollEvents();
 	}
-
+	
+	// TODO delete objects as soon as they're no longer needed
 	glDeleteVertexArrays(1, &idVertexArray);
 	glDeleteBuffers(1, &idVertexBuffer);
 	glDeleteBuffers(1, &idElementBuffer);
