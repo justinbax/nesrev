@@ -5,197 +5,25 @@
 #include "GL/glew.h"
 #include "GLFW/glfw3.h"
 
-// Triangle vertices information
-#define VERTEX_COUNT 4 // Number of vertices
-#define VERTEX_SIZE 3 // Number of components to a position (in 3D space with x, y, z coordinates, is 3)
-#define COLOR_COMPONENTS 3 // Number of components to a color (RGB is 3, RGBA is 4)
+#include "graphics.h"
+
 #define HEIGHT_PIXELS 240 // Number of pixels on the y axis
 #define WIDTH_PIXELS 256 // Number of pixels on the x axis
-
-// A polygon with n sides can always be dissected in (n - 2) triangles, so the number of indices for such a dissected
-// polygon is its number of triangles multiplied by the number of vertices of a triangle, giving 3(n - 2)
-#define INDICES_PER_POLYGON (VERTEX_COUNT - 2) * 3
 
 // Texture unit used to send pixel data to the fragment shader
 #define TEXTURE_UNIT 0
 
-void callbackErrorGL(GLenum source, GLenum type, GLenum id, GLenum severity, GLsizei length, const GLchar *message, const void *userParam) {
-	if (type == GL_DEBUG_TYPE_ERROR)
-		printf("OpenGL Error 0x%X : %s (severity : 0x%X)\n", type, message, severity);
-}
-
-void callbackErrorGLFW(int code, const char *description) {
-	printf("GLFW Error %i : %s\n", code, description);
-}
-
-void callbackFrameBufferSize(GLFWwindow *window, int width, int height) {
-	glViewport(0, 0, width, height);
-}
-
-char *loadShader(const char *path) {
-	// Returns contents of text file in a stack-allocated char *
-	FILE *input = fopen(path, "rb"); // File is opened in binary mode to avoid problems with reading CRLF when getting file size but only reading LF when calling fread
-	if (input == NULL)
-		return NULL;
-
-	// Allocates enough memory
-	fseek(input, 0, SEEK_END);
-	long int size = ftell(input);
-	rewind(input);
-	char *buffer = malloc((size + 1) * sizeof(char));
-	if (buffer == NULL) {
-		fclose(input);
-		return NULL;
-	}
-
-	fread(buffer, size * sizeof(char), 1, input);
-	buffer[size] = '\0'; // TODO this can be improved
-	fclose(input); // TODO make sure this is always closed
-	return buffer;
-}
-
-int createShader(const char *path, GLenum type) {
-	// Creates and compiles a shader from a file
-	unsigned int idShader = glCreateShader(type);
-	const char *sourceShader = loadShader(path);
-	glShaderSource(idShader, 1, &sourceShader, NULL);
-	glCompileShader(idShader);
-	// TODO not elegant
-	free((char *)sourceShader);
-
-	// Error handling
-	int status;
-	glGetShaderiv(idShader, GL_COMPILE_STATUS, &status);
-	if (status == 0) {
-		int msgLength;
-		glGetShaderiv(idShader, GL_INFO_LOG_LENGTH, &msgLength);
-		char *msg = malloc(msgLength);
-		glGetShaderInfoLog(idShader, msgLength, &msgLength, msg);
-		printf("GL Shader Compilation Error : %s\n", msg);
-		free(msg);
-		return -1;
-	}
-	return idShader;
-}
-
-int createProgram(unsigned int idVertexShader, unsigned int idFragmentShader) {
-	// Creates and returns the final shader program ID
-	unsigned int idProgramShader = glCreateProgram();
-	glAttachShader(idProgramShader, idVertexShader);
-	glAttachShader(idProgramShader, idFragmentShader);
-	glLinkProgram(idProgramShader);
-
-	// Error handling
-	int status;
-	glGetProgramiv(idProgramShader, GL_LINK_STATUS, &status);
-	if (status == 0) {
-		int msgLength;
-		glGetProgramiv(idProgramShader, GL_INFO_LOG_LENGTH, &msgLength);
-		char *msg = malloc(msgLength);
-		glGetProgramInfoLog(idProgramShader, msgLength, &msgLength, msg);
-		printf("GL Program Linking Error : %s\n", msg);
-		free(msg);
-		return -1;
-	}
-	return idProgramShader;
-}
-
-const int setupPixels() {
-	// Sets up vertex information and sends it to bound array and element array buffers
-	// Returns the number of floats to read from vertex array buffer
-	// Indices of vertices for two triangles forming the rectangle
-	// This array is dynamically allocated to avoid memory depletion in the stack area for setupPixels
-	size_t indicesCount = INDICES_PER_POLYGON * HEIGHT_PIXELS * WIDTH_PIXELS;
-	unsigned int *indices = malloc(sizeof(float) * indicesCount);
-
-	// Vertex data, buffers and attributes set up
-	// All rectangle vertices in normalized device coordinates and their corresponding rectangle index
-	// This array is also dynamically allocated to avoid memory depletion in the stack area for setupPixels
-	// TODO deal with VERTEX_SIZE
-	// TODO this looks horrible
-	// TODO make sure this is always freed
-	size_t verticesCount = HEIGHT_PIXELS * WIDTH_PIXELS * VERTEX_COUNT * VERTEX_SIZE;
-	float *vertices = malloc(sizeof(float) * verticesCount);
-	// Normalized width and height are 2/N instead of 1/N because normalized device coordinates range from [-1.0 ; 1.0], giving a total range of 2
-	float pixelWidthNormalized = 2.0f / WIDTH_PIXELS;
-	float pixelHeightNormalized = 2.0f / HEIGHT_PIXELS;
-
-	for (int i = 0; i < HEIGHT_PIXELS; i++) {
-		for (int j = 0; j < WIDTH_PIXELS; j++) {
-			int currentPixel = i * WIDTH_PIXELS + j;
-			for (int k = 0; k < VERTEX_COUNT; k++) {
-				// TODO this looks like magic, both the left-hand and the right-hand
-				// j + (k & 0b1) adds one to j when k mod 2 == 1. In other words, when k is for one of the right vertices, this adds 1 * pixelWidthNormalized to the x coordinate
-				vertices[((i * WIDTH_PIXELS + j) * VERTEX_COUNT + k) * VERTEX_SIZE + 0] = pixelWidthNormalized * (j + (k & 0b1)) - 1; // x coordinate
-				// i + (k > 1) adds one to i when k > 1. In other words, when k is for one of the top vertices, this adds 1 * pixelHeightNormalized to the y coordinates
-				vertices[((i * WIDTH_PIXELS + j) * VERTEX_COUNT + k) * VERTEX_SIZE + 1] = pixelHeightNormalized * (i + (k > 1)) - 1; // y coordinate
-				vertices[((i * WIDTH_PIXELS + j) * VERTEX_COUNT + k) * VERTEX_SIZE + 2] = 1; // z coordinate
-			}
-			// For each rectangle, this fills the indices array with the correct indices to dissect it into two triangles
-			// TODO this looks like magic
-			indices[currentPixel * INDICES_PER_POLYGON + 0] = currentPixel * VERTEX_COUNT; // first triangle : bottom-left
-			indices[currentPixel * INDICES_PER_POLYGON + 1] = currentPixel * VERTEX_COUNT + 1; // first triangle : bottom-right
-			indices[currentPixel * INDICES_PER_POLYGON + 2] = currentPixel * VERTEX_COUNT + 2; // first triangle : top-left
-			indices[currentPixel * INDICES_PER_POLYGON + 3] = currentPixel * VERTEX_COUNT + 1; // second triangle : bottom-right
-			indices[currentPixel * INDICES_PER_POLYGON + 4] = currentPixel * VERTEX_COUNT + 2; // second triangle : top-left
-			indices[currentPixel * INDICES_PER_POLYGON + 5] = currentPixel * VERTEX_COUNT + 3; // second triangle : top-right
-		}
-	}
-
-	// Sends vertices and indices data
-	// TODO the parameter for size is horrible
-	glBufferData(GL_ARRAY_BUFFER, sizeof(float) * verticesCount, vertices, GL_STATIC_DRAW);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(float) * indicesCount, indices, GL_STATIC_DRAW);
-
-	free(indices);
-	free(vertices);
-
-	return verticesCount;
-}
-
 int main() {
 	printf("NESRev v3.6\n");
 
-	// Initializes GLFW
-	glfwSetErrorCallback(callbackErrorGLFW);
-	if (!glfwInit()) {
-		printf("Fatal error : GLFW couldn't initialize correctly.\n");
-		return 1;
-	}
-
-	// Creates a window and an OpenGL context
-	GLFWwindow *window = glfwCreateWindow(1920, 1080, "NESRev v3.6", NULL, NULL);
+	GLFWwindow *window = createWindow(1920, 1080, "NESRev");
 	if (window == NULL)
 		return 0x01;
-	glViewport(0, 0, 1920, 1080);
-	glfwSetFramebufferSizeCallback(window, callbackFrameBufferSize);
-	glfwMakeContextCurrent(window);
 
-	// Initializes GLEW
-	if (glewInit() != GLEW_OK) {
-		printf("Fatal error : GLEW couldn't initialize correctly.\n");
+	int idShaderProgram = initShaders("src/shaders/vertexMain.glsl", "src/shaders/fragmentMain.glsl");
+	if (idShaderProgram < 0)
 		return 0x02;
-	}
-	
-	glEnable(GL_DEBUG_OUTPUT);
-	glDebugMessageCallback(callbackErrorGL, NULL);
 
-	// Shader creation and compiling
-	int idVertexShader = createShader("src/shaders/vertexMain.glsl", GL_VERTEX_SHADER);
-	int idFragmentShader = createShader("src/shaders/fragmentMain.glsl", GL_FRAGMENT_SHADER);
-	if (idVertexShader == -1 || idFragmentShader == -1) {
-		printf("Fatal error : Shader couldn't compile proprely.\n");
-		return 0x03;
-	}
-	int idShaderProgram = createProgram(idVertexShader, idFragmentShader);
-	if (idShaderProgram == -1) {
-		printf("Fatal error : Shader program couldn't compile proprely.\n");
-		return 0x04;
-	}
-	glUseProgram(idShaderProgram);
-
-	// TODO this comment is dumb
-	// Creates and binds a vertex array object containing a vertex buffer object and an element buffer object to pass vertex data and a texture buffer to pass pixel colors
 	unsigned int idVertexArray, idVertexBuffer, idElementBuffer, idTextureBuffer, idFrameTexture;
 	glGenVertexArrays(1, &idVertexArray);
 	glGenBuffers(1, &idVertexBuffer);
@@ -207,20 +35,7 @@ int main() {
 	glBindBuffer(GL_ARRAY_BUFFER, idVertexBuffer);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, idElementBuffer);
 
-	// Sets up communication with the fragment shader via a texture unit
-	// A buffer texture is used to send the pixel data to the fragment shader as a sampler
-	// TODO check what type of float needs to be used (maybe GL_RGB16F or GL_RGB8F/GL_RGB8I (?) are fine)
-	glBindBuffer(GL_TEXTURE_BUFFER, idTextureBuffer);
-	glTexBuffer(GL_TEXTURE_BUFFER, GL_RGB32F, idTextureBuffer);
-	// By setting the uniform to TEXTURE_UNIT, the sampler will be associated with the texture unit where the texture resides
-	glUniform1i(glGetUniformLocation(idShaderProgram, "textureSampler"), TEXTURE_UNIT);
-
-	const int verticesCount = setupPixels();
-
-	// Specifies the interpretation of vertex data
-	unsigned int idPosition = glGetAttribLocation(idShaderProgram, "pos");
-	glVertexAttribPointer(idPosition, COLOR_COMPONENTS, GL_FLOAT, false, COLOR_COMPONENTS * sizeof(float), (void *)0);
-	glEnableVertexAttribArray(idPosition);
+	const int verticesCount = setupPixels(WIDTH_PIXELS, HEIGHT_PIXELS, glGetAttribLocation(idShaderProgram, "pos"), glGetAttribLocation(idShaderProgram, "textureSampler"), TEXTURE_UNIT);
 
 	// Unbinds vertex buffer and vertex array objects
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -228,16 +43,11 @@ int main() {
 	glBindVertexArray(0);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-	float colors[HEIGHT_PIXELS * WIDTH_PIXELS * 3];
+	// Array is dynamically allocated to allow dynamic resolution
+	float *colors = malloc(sizeof(float) * HEIGHT_PIXELS * WIDTH_PIXELS * 3);
 
 	// Main loop
 	while (!glfwWindowShouldClose(window)) {
-		glClear(GL_COLOR_BUFFER_BIT);
-
-		// Drawing
-		glUseProgram(idShaderProgram);
-		glBindVertexArray(idVertexArray);
-		
 		// Updates every pixel's color
 		for (int i = 0; i < HEIGHT_PIXELS; i++) {
 			for (int j = 0; j < WIDTH_PIXELS; j++) {
@@ -246,31 +56,23 @@ int main() {
 				colors[3 * (WIDTH_PIXELS * i + j) + 2] = 0.0f;
 			}
 		}
-		glActiveTexture(GL_TEXTURE0 + TEXTURE_UNIT);
-		glBindTexture(GL_TEXTURE_BUFFER, idFrameTexture);
-		
-		glBindBuffer(GL_TEXTURE_BUFFER, idTextureBuffer);
-		glTexBuffer(GL_TEXTURE_BUFFER, GL_RGB32F, idTextureBuffer);
-		glBufferData(GL_TEXTURE_BUFFER, sizeof(colors), colors, GL_STATIC_DRAW);
 
-		glDrawElements(GL_TRIANGLES, verticesCount, GL_UNSIGNED_INT, (void *)0);
-
-		glBindBuffer(GL_TEXTURE_BUFFER, 0);
+		// Drawing
+		glUseProgram(idShaderProgram);
+		glBindVertexArray(idVertexArray);
+		draw(HEIGHT_PIXELS * WIDTH_PIXELS, colors, verticesCount, idTextureBuffer, idFrameTexture, TEXTURE_UNIT);
 		glBindVertexArray(0);
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
 	}
 	
-	// TODO delete objects as soon as they're no longer needed
 	glDeleteVertexArrays(1, &idVertexArray);
 	glDeleteBuffers(1, &idVertexBuffer);
 	glDeleteBuffers(1, &idElementBuffer);
 	glDeleteBuffers(1, &idTextureBuffer);
 	glDeleteTextures(1, &idFrameTexture);
 	glDeleteProgram(idShaderProgram);
-	glDeleteShader(idVertexShader);
-	glDeleteShader(idFragmentShader);
 
 	glfwTerminate();
 
