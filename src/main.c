@@ -8,7 +8,7 @@
 // Triangle vertices information
 #define VERTEX_COUNT 4
 #define VERTEX_SIZE 3
-#define RGB_LENGTH 3
+#define COLOR_COMPONENTS 3
 #define HEIGHT_PIXELS 5
 #define WIDTH_PIXELS 4
 
@@ -20,7 +20,8 @@
 #define TEXTURE_UNIT 0
 
 void callbackErrorGL(GLenum source, GLenum type, GLenum id, GLenum severity, GLsizei length, const GLchar *message, const void *userParam) {
-	printf("GL Callback 0x%X : %s (severity : 0x%X)\n", type, message, severity);
+	if (type == GL_DEBUG_TYPE_ERROR)
+		printf("OpenGL Error 0x%X : %s (severity : 0x%X)\n", type, message, severity);
 }
 
 void callbackErrorGLFW(int code, const char *description) {
@@ -81,8 +82,6 @@ int createProgram(unsigned int idVertexShader, unsigned int idFragmentShader) {
 	glAttachShader(idProgramShader, idVertexShader);
 	glAttachShader(idProgramShader, idFragmentShader);
 	glLinkProgram(idProgramShader);
-	glDeleteShader(idVertexShader);
-	glDeleteShader(idProgramShader);
 
 	// Error handling
 	int status;
@@ -181,26 +180,26 @@ int main() {
 	}
 	glUseProgram(idShaderProgram);
 
+	// TODO this comment is dumb
 	// Creates and binds a vertex array object containing a vertex buffer object and an element buffer object to pass vertex data and a texture buffer to pass pixel colors
-	unsigned int idVertexArray, idVertexBuffer, idElementBuffer, idFrameTexture;
+	unsigned int idVertexArray, idVertexBuffer, idElementBuffer, idTextureBuffer, idFrameTexture;
 	glGenVertexArrays(1, &idVertexArray);
 	glGenBuffers(1, &idVertexBuffer);
 	glGenBuffers(1, &idElementBuffer);
+	glGenBuffers(1, &idTextureBuffer);
 	glGenTextures(1, &idFrameTexture);
-
-	// Sets up communication with the fragment shader via a texture unit
-	// A texture is used to send the pixel data to the fragment shader as a sampler
-	// TODO check what type of float needs to be used (maybe GL_RGB16F or GL_RGB8F are fine)
-	glBindTexture(GL_TEXTURE_1D, idFrameTexture);
-	glTexStorage1D(GL_TEXTURE_1D, 1, GL_RGB32F, WIDTH_PIXELS * HEIGHT_PIXELS);
-
-	// By setting the uniform to TEXTURE_UNIT, the sampler will be associated with the texture unit where the texture resides
-	glUniform1i(glGetUniformLocation(idShaderProgram, "textureSampler"), TEXTURE_UNIT);
-	glBindTexture(GL_TEXTURE_1D, 0);
 
 	glBindVertexArray(idVertexArray);
 	glBindBuffer(GL_ARRAY_BUFFER, idVertexBuffer);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, idElementBuffer);
+
+	// Sets up communication with the fragment shader via a texture unit
+	// A buffer texture is used to send the pixel data to the fragment shader as a sampler
+	// TODO check what type of float needs to be used (maybe GL_RGB16F or GL_RGB8F/GL_RGB8I (?) are fine)
+	glBindBuffer(GL_TEXTURE_BUFFER, idTextureBuffer);
+	glTexBuffer(GL_TEXTURE_BUFFER, GL_RGB32F, idTextureBuffer);
+	// By setting the uniform to TEXTURE_UNIT, the sampler will be associated with the texture unit where the texture resides
+	glUniform1i(glGetUniformLocation(idShaderProgram, "textureSampler"), TEXTURE_UNIT);
 
 	const int verticesCount = setupPixels();
 
@@ -211,17 +210,15 @@ int main() {
 
 	// Unbinds vertex buffer and vertex array objects
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindBuffer(GL_TEXTURE_BUFFER, 0);
 	glBindVertexArray(0);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-	float colors[HEIGHT_PIXELS * WIDTH_PIXELS][3];
+	float colors[HEIGHT_PIXELS * WIDTH_PIXELS * 3];
 
 	// Main loop
 	while (!glfwWindowShouldClose(window)) {
 		glClear(GL_COLOR_BUFFER_BIT);
-
-		glActiveTexture(GL_TEXTURE0 + TEXTURE_UNIT);
-		glBindTexture(GL_TEXTURE_1D, idFrameTexture);
 
 		// Drawing
 		glUseProgram(idShaderProgram);
@@ -230,17 +227,22 @@ int main() {
 		// Updates every pixel's color
 		for (int i = 0; i < HEIGHT_PIXELS; i++) {
 			for (int j = 0; j < WIDTH_PIXELS; j++) {
-				colors[WIDTH_PIXELS * i + j][0] = (float)(i + 1) / HEIGHT_PIXELS;
-				colors[WIDTH_PIXELS * i + j][1] = (float)(j + 1) / WIDTH_PIXELS;
-				colors[WIDTH_PIXELS * i + j][2] = 1.0f;
+				colors[3 * (WIDTH_PIXELS * i + j) + 0] = (float)(i + 1) / HEIGHT_PIXELS;
+				colors[3 * (WIDTH_PIXELS * i + j) + 1] = (float)(j + 1) / WIDTH_PIXELS;
+				colors[3 * (WIDTH_PIXELS * i + j) + 2] = 0.0f;
 			}
 		}
-		// TODO this line throws GL_INVALID_OPERATION when idFrameTexture is bound to GL_TEXTURE_1D (code 0x824C, severity 0x9146)
-		glTexImage1D(GL_TEXTURE_1D, 0, GL_RGB, HEIGHT_PIXELS * WIDTH_PIXELS, 0, GL_RGB, GL_FLOAT, colors);
+		glActiveTexture(GL_TEXTURE0 + TEXTURE_UNIT);
+		glBindTexture(GL_TEXTURE_BUFFER, idFrameTexture);
+		
+		glBindBuffer(GL_TEXTURE_BUFFER, idTextureBuffer);
+		glTexBuffer(GL_TEXTURE_BUFFER, GL_RGB32F, idTextureBuffer);
+		glBufferData(GL_TEXTURE_BUFFER, sizeof(colors), colors, GL_STATIC_DRAW);
 
 		glDrawElements(GL_TRIANGLES, verticesCount, GL_UNSIGNED_INT, (void *)0);
+
+		glBindBuffer(GL_TEXTURE_BUFFER, 0);
 		glBindVertexArray(0);
-		glBindTexture(GL_TEXTURE_1D, 0);
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
@@ -249,7 +251,11 @@ int main() {
 	glDeleteVertexArrays(1, &idVertexArray);
 	glDeleteBuffers(1, &idVertexBuffer);
 	glDeleteBuffers(1, &idElementBuffer);
+	glDeleteBuffers(1, &idTextureBuffer);
+	glDeleteTextures(1, &idFrameTexture);
 	glDeleteProgram(idShaderProgram);
+	glDeleteShader(idVertexShader);
+	glDeleteShader(idFragmentShader);
 
 	glfwTerminate();
 

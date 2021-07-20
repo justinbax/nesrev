@@ -1,8 +1,8 @@
 #version 460
-uniform sampler1D textureSampler;
+uniform samplerBuffer textureSampler;
 in flat int pixelNumber;
 out vec4 finalColor;
 
 void main() {
-	finalColor = vec4(texelFetch(textureSampler, pixelNumber, 0).xyz, 1.0);
+	finalColor = vec4(texelFetch(textureSampler, pixelNumber).xyz, 1.0);
 }
