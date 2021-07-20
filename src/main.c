@@ -9,8 +9,8 @@
 #define VERTEX_COUNT 4
 #define VERTEX_SIZE 3
 #define RGB_LENGTH 3
-#define HEIGHT_PIXELS 64
-#define WIDTH_PIXELS 60
+#define HEIGHT_PIXELS 5
+#define WIDTH_PIXELS 4
 
 // A polygon with n sides can always be dissected in (n - 2) triangles, so the number of indices for such a dissected
 // polygon is its number of triangles multiplied by the number of vertices of a triangle, giving 3(n - 2)
@@ -57,7 +57,10 @@ int createShader(const char *path, GLenum type) {
 	const char *sourceShader = loadShader(path);
 	glShaderSource(idShader, 1, &sourceShader, NULL);
 	glCompileShader(idShader);
-	
+	// TODO not elegant
+	free((char *)sourceShader);
+
+	// Error handling
 	int status;
 	glGetShaderiv(idShader, GL_COMPILE_STATUS, &status);
 	if (status == 0) {
@@ -67,24 +70,21 @@ int createShader(const char *path, GLenum type) {
 		glGetShaderInfoLog(idShader, msgLength, &msgLength, msg);
 		printf("GL Shader Compilation Error : %s\n", msg);
 		free(msg);
+		return -1;
 	}
-
-	// TODO not elegant
-	free((char *)sourceShader);
 	return idShader;
 }
 
-int createProgram(const char *vertexShaderPath, const char *fragmentShaderPath) {
-	// Creates and compiles the vertex and fragment shaders
-	unsigned int idVertexShader = createShader(vertexShaderPath, GL_VERTEX_SHADER);
-	unsigned int idFragmentShader = createShader(fragmentShaderPath, GL_FRAGMENT_SHADER);
-
+int createProgram(unsigned int idVertexShader, unsigned int idFragmentShader) {
 	// Creates and returns the final shader program ID
 	unsigned int idProgramShader = glCreateProgram();
 	glAttachShader(idProgramShader, idVertexShader);
 	glAttachShader(idProgramShader, idFragmentShader);
 	glLinkProgram(idProgramShader);
+	glDeleteShader(idVertexShader);
+	glDeleteShader(idProgramShader);
 
+	// Error handling
 	int status;
 	glGetProgramiv(idProgramShader, GL_LINK_STATUS, &status);
 	if (status == 0) {
@@ -94,10 +94,8 @@ int createProgram(const char *vertexShaderPath, const char *fragmentShaderPath) 
 		glGetProgramInfoLog(idProgramShader, msgLength, &msgLength, msg);
 		printf("GL Program Linking Error : %s\n", msg);
 		free(msg);
+		return -1;
 	}
-
-	glDeleteShader(idVertexShader);
-	glDeleteShader(idProgramShader);
 	return idProgramShader;
 }
 
@@ -147,52 +145,62 @@ int main() {
 
 	// Initializes GLFW
 	glfwSetErrorCallback(callbackErrorGLFW);
-	if (!glfwInit())
+	if (!glfwInit()) {
+		printf("Fatal error : GLFW couldn't initialize correctly.\n");
 		return 1;
-	printf("GLFW initialized.\n");
+	}
 
 	// Creates a window and an OpenGL context
 	GLFWwindow *window = glfwCreateWindow(1920, 1080, "NESRev v3.6", NULL, NULL);
 	if (window == NULL)
-		return 1;
+		return 0x01;
 	glViewport(0, 0, 1920, 1080);
 	glfwSetFramebufferSizeCallback(window, callbackFrameBufferSize);
 	glfwMakeContextCurrent(window);
 
 	// Initializes GLEW
-	if (glewInit() != GLEW_OK)
-		return 2;
-	printf("GLEW initialized.\n");
+	if (glewInit() != GLEW_OK) {
+		printf("Fatal error : GLEW couldn't initialize correctly.\n");
+		return 0x02;
+	}
 	
 	glEnable(GL_DEBUG_OUTPUT);
 	glDebugMessageCallback(callbackErrorGL, NULL);
 
 	// Shader creation and compiling
-	int idShaderProgram = createProgram("src/shaders/vertexMain.glsl", "src/shaders/fragmentMain.glsl");
+	int idVertexShader = createShader("src/shaders/vertexMain.glsl", GL_VERTEX_SHADER);
+	int idFragmentShader = createShader("src/shaders/fragmentMain.glsl", GL_FRAGMENT_SHADER);
+	if (idVertexShader == -1 || idFragmentShader == -1) {
+		printf("Fatal error : Shader couldn't compile proprely.\n");
+		return 0x03;
+	}
+	int idShaderProgram = createProgram(idVertexShader, idFragmentShader);
+	if (idShaderProgram == -1) {
+		printf("Fatal error : Shader program couldn't compile proprely.\n");
+		return 0x04;
+	}
 	glUseProgram(idShaderProgram);
 
 	// Creates and binds a vertex array object containing a vertex buffer object and an element buffer object to pass vertex data and a texture buffer to pass pixel colors
-	unsigned int idVertexArray, idVertexBuffer, idElementBuffer;
+	unsigned int idVertexArray, idVertexBuffer, idElementBuffer, idFrameTexture;
 	glGenVertexArrays(1, &idVertexArray);
 	glGenBuffers(1, &idVertexBuffer);
 	glGenBuffers(1, &idElementBuffer);
+	glGenTextures(1, &idFrameTexture);
+
+	// Sets up communication with the fragment shader via a texture unit
+	// A texture is used to send the pixel data to the fragment shader as a sampler
+	// TODO check what type of float needs to be used (maybe GL_RGB16F or GL_RGB8F are fine)
+	glBindTexture(GL_TEXTURE_1D, idFrameTexture);
+	glTexStorage1D(GL_TEXTURE_1D, 1, GL_RGB32F, WIDTH_PIXELS * HEIGHT_PIXELS);
+
+	// By setting the uniform to TEXTURE_UNIT, the sampler will be associated with the texture unit where the texture resides
+	glUniform1i(glGetUniformLocation(idShaderProgram, "textureSampler"), TEXTURE_UNIT);
+	glBindTexture(GL_TEXTURE_1D, 0);
 
 	glBindVertexArray(idVertexArray);
 	glBindBuffer(GL_ARRAY_BUFFER, idVertexBuffer);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, idElementBuffer);
-
-	// Sets up communication with the fragment shader via a texture unit
-	// A texture is used to send the pixel data to the fragment shader as a sampler
-	unsigned int idFrameTexture;
-	glGenTextures(1, &idFrameTexture);
-	glActiveTexture(GL_TEXTURE0 + TEXTURE_UNIT);
-	glBindTexture(GL_TEXTURE_1D, idFrameTexture);
-	// TODO check what type of float needs to be used (maybe GL_RGB16F or GL_RGB8F are fine)
-	glTexStorage1D(GL_TEXTURE_1D, 1, GL_RGB32F, WIDTH_PIXELS * HEIGHT_PIXELS);
-	glBindTexture(GL_TEXTURE_1D, 0);
-
-	// By setting the uniform to 0, the sampler will be associated with GL_TEXTURE0 where the texture resides
-	glUniform1i(glGetUniformLocation(idShaderProgram, "textureSampler"), TEXTURE_UNIT);
 
 	const int verticesCount = setupPixels();
 
@@ -208,12 +216,12 @@ int main() {
 
 	float colors[HEIGHT_PIXELS * WIDTH_PIXELS][3];
 
-	// Uncomment this to render in wireframe mode
-	// glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-
 	// Main loop
 	while (!glfwWindowShouldClose(window)) {
 		glClear(GL_COLOR_BUFFER_BIT);
+
+		glActiveTexture(GL_TEXTURE0 + TEXTURE_UNIT);
+		glBindTexture(GL_TEXTURE_1D, idFrameTexture);
 
 		// Drawing
 		glUseProgram(idShaderProgram);
@@ -224,14 +232,15 @@ int main() {
 			for (int j = 0; j < WIDTH_PIXELS; j++) {
 				colors[WIDTH_PIXELS * i + j][0] = (float)(i + 1) / HEIGHT_PIXELS;
 				colors[WIDTH_PIXELS * i + j][1] = (float)(j + 1) / WIDTH_PIXELS;
-				colors[WIDTH_PIXELS * i + j][2] = 0.0f;
+				colors[WIDTH_PIXELS * i + j][2] = 1.0f;
 			}
 		}
+		// TODO this line throws GL_INVALID_OPERATION when idFrameTexture is bound to GL_TEXTURE_1D (code 0x824C, severity 0x9146)
 		glTexImage1D(GL_TEXTURE_1D, 0, GL_RGB, HEIGHT_PIXELS * WIDTH_PIXELS, 0, GL_RGB, GL_FLOAT, colors);
 
 		glDrawElements(GL_TRIANGLES, verticesCount, GL_UNSIGNED_INT, (void *)0);
-
 		glBindVertexArray(0);
+		glBindTexture(GL_TEXTURE_1D, 0);
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
