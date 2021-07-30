@@ -13,6 +13,8 @@
 // polygon is its number of triangles multiplied by the number of vertices of a triangle, giving 3(n - 2)
 #define INDICES_PER_POLYGON (VERTEX_COUNT - 2) * 3
 
+#define TEXTURE_UNIT 0 // Texture unit used to send pixel data to the fragment shader
+
 const char *readFile(const char *path) {
 	// Returns contents of text file in a stack-allocated char *. The returned pointer has to be deallocated with free by callee
 	// File is opened in binary mode to avoid problems with reading CRLF (2 chars) when getting file size but only reading LF (1 char) when calling fread
@@ -103,30 +105,46 @@ int initShaders(const char *vertexShaderPath, const char *fragmentShaderPath) {
 	return idShaderProgram;
 }
 
-const int setupPixels(const int width, const int height, unsigned int idPositionLocation, unsigned int idSamplerLocation, unsigned int textureUnit) {
+const Context setupPixels(const int width, const int height) {
 	// Sets up vertex information and sends it to bound array and element array buffers
-	// Returns the number of floats to read from vertex array buffer
+	// Returns a Context object containing all handlers information needed for drawing and terminating
+	Context context;
+	context.status = false; // The success flag is only set at the end of the operation so we can safely return the context as it is if we encounter an error.
+	// Contrary to the index count, the vertex count is needed when calling glDraw* and is therefore stored in the context object.
+	context.verticesCount =  width * height * VERTEX_COUNT * VERTEX_SIZE;
+	context.idShaderProgram = initShaders("src/shaders/vertexMain.vert", "src/shaders/fragmentMain.frag");
+	if (context.idShaderProgram < 0)
+		return context;
+
+	// Generates all buffers and textures
+	glGenVertexArrays(1, &context.idVertexArray);
+	glGenBuffers(1, &context.idVertexBuffer);
+	glGenBuffers(1, &context.idElementBuffer);
+	glGenBuffers(1, &context.idTextureBuffer);
+	glGenTextures(1, &context.idFrameTexture);
+	// At this point, the Context object should be fully initialized.
+
+	glBindVertexArray(context.idVertexArray);
+	glBindBuffer(GL_ARRAY_BUFFER, context.idVertexBuffer);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, context.idElementBuffer);
 
 	// Sets up communication with the fragment shader via a texture unit
 	// A buffer texture is used to send the pixel data to the fragment shader as a sampler
 	// By setting the uniform to TEXTURE_UNIT, the sampler will be associated with the texture unit where the texture resides
-	glUniform1i(idSamplerLocation, textureUnit);
+	glUniform1i(glGetUniformLocation(context.idShaderProgram, "textureSampler"), TEXTURE_UNIT);
 
 	// Indices of vertices for two triangles forming a rectangle
 	// This array is dynamically allocated to avoid memory depletion in the stack area for setupPixels
 	int indicesCount = INDICES_PER_POLYGON * height * width;
 	unsigned int *indices = malloc(sizeof(float) * indicesCount);
 	if (indices == NULL)
-		return -0x01;
+		return context;
 
-	// Vertex data, buffers and attributes set up
-	// All rectangle vertices in normalized device coordinates and their corresponding rectangle index
 	// This array is also dynamically allocated to avoid memory depletion in the stack area for setupPixels
-	int verticesCount = height * width * VERTEX_COUNT * VERTEX_SIZE;
-	float *vertices = malloc(sizeof(float) * verticesCount);
+	float *vertices = malloc(sizeof(float) * context.verticesCount);
 	if (vertices == NULL) {
 		free(indices);
-		return -0x02;
+		return context;
 	}
 
 	// Normalized width and height are 2/N instead of 1/N because normalized device coordinates range from [-1.0 ; 1.0], giving a total range of 2
@@ -162,33 +180,54 @@ const int setupPixels(const int width, const int height, unsigned int idPosition
 	}
 
 	// Sends vertices and indices data
-	glBufferData(GL_ARRAY_BUFFER, sizeof(float) * verticesCount, vertices, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(float) * context.verticesCount, vertices, GL_STATIC_DRAW);
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(float) * indicesCount, indices, GL_STATIC_DRAW);
 	free(indices);
 	free(vertices);
 
 	// Specifies the interpretation of vertex data
+	unsigned int idPositionLocation = glGetAttribLocation(context.idShaderProgram, "pos");
 	glVertexAttribPointer(idPositionLocation, VERTEX_SIZE, GL_FLOAT, false, VERTEX_SIZE * sizeof(float), (void *)0);
 	glEnableVertexAttribArray(idPositionLocation);
 
-	return verticesCount;
+	// Unbinds all bound objects
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindBuffer(GL_TEXTURE_BUFFER, 0);
+	glBindVertexArray(0);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+	context.status = true;
+	return context;
 }
 
-void draw(const int pixelCount, const float * const colors, const int verticesCount, unsigned int idTextureBuffers, unsigned int idFrameTexture, const unsigned int textureUnit) {
+void draw(const Context context, const int width, const int height, const float * const colors) {
 	// Draws every pixel with given colors for a single frame
 	// This assumes a valid shader program and vertex array object are already in use / bound and vertices / indices data is already sent to the GPU
 	// This does not unbind any object already bound by callee, nor does it swap buffers or poll events
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	glActiveTexture(GL_TEXTURE0 + textureUnit);
-	glBindTexture(GL_TEXTURE_BUFFER, idFrameTexture);
+	glUseProgram(context.idShaderProgram);
+	glBindVertexArray(context.idVertexArray);
+
+	glActiveTexture(GL_TEXTURE0 + TEXTURE_UNIT);
+	glBindTexture(GL_TEXTURE_BUFFER, context.idFrameTexture);
 
 	// TODO check what type of float needs to be used (maybe GL_RGB16F or GL_RGB8F/GL_RGB8I (?) are fine)
-	glBindBuffer(GL_TEXTURE_BUFFER, idTextureBuffers);
-	glTexBuffer(GL_TEXTURE_BUFFER, GL_RGB32F, idTextureBuffers);
-	glBufferData(GL_TEXTURE_BUFFER, pixelCount * COLOR_COMPONENTS * sizeof(float), colors, GL_STATIC_DRAW);
+	glBindBuffer(GL_TEXTURE_BUFFER, context.idTextureBuffer);
+	glTexBuffer(GL_TEXTURE_BUFFER, GL_RGB32F, context.idTextureBuffer);
+	glBufferData(GL_TEXTURE_BUFFER, width * height * COLOR_COMPONENTS * sizeof(float), colors, GL_STATIC_DRAW);
 
-	glDrawElements(GL_TRIANGLES, verticesCount, GL_UNSIGNED_INT, (void *)0);
+	glDrawElements(GL_TRIANGLES, context.verticesCount, GL_UNSIGNED_INT, (void *)0);
 
 	glBindBuffer(GL_TEXTURE_BUFFER, 0);
+	glBindVertexArray(0);
+}
+
+void terminate(const Context context) {
+	glDeleteVertexArrays(1, &context.idVertexArray);
+	glDeleteBuffers(1, &context.idVertexBuffer);
+	glDeleteBuffers(1, &context.idElementBuffer);
+	glDeleteBuffers(1, &context.idTextureBuffer);
+	glDeleteTextures(1, &context.idFrameTexture);
+	glDeleteProgram(context.idShaderProgram);
 }

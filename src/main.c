@@ -7,15 +7,17 @@
 
 #include "graphics.h"
 
-#define HEIGHT_PIXELS 240 // Number of pixels on the y axis
-#define WIDTH_PIXELS 256 // Number of pixels on the x axis
+// Number of pixels on the x and y axies
+#define HEIGHT_PIXELS 240
+#define WIDTH_PIXELS 256
 
-// Texture unit used to send pixel data to the fragment shader
-#define TEXTURE_UNIT 0
+// Initial window dimensions
+#define WINDOW_HEIGHT 1080
+#define WINDOW_WIDTH 1920
 
 void callbackErrorGL(GLenum source, GLenum type, GLenum id, GLenum severity, GLsizei length, const GLchar *message, const void *userParam) {
 	if (type == GL_DEBUG_TYPE_ERROR)
-		printf("OpenGL Error 0x%X : %s (severity : 0x%X)\n", type, message, severity);
+		printf("OpenGL Error 0x%X from 0x%X : %s (severity : 0x%X)\n", type, id, message, severity);
 }
 
 void callbackErrorGLFW(int code, const char *description) {
@@ -41,12 +43,12 @@ int main() {
 		return -0x01;
 	}
 
-	GLFWwindow *window = glfwCreateWindow(1920, 1080, "NesREV", NULL, NULL);
+	GLFWwindow *window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "NesREV", NULL, NULL);
 	if (window == NULL) {
 		printf("Fatal error : couldn't create window.\n");
 		return -0x02;
 	}
-	glViewport(0, 0, 1920, 1080);
+	glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
 	glfwSetFramebufferSizeCallback(window, callbackFrameBufferSize);
 	glfwMakeContextCurrent(window);
 
@@ -59,34 +61,11 @@ int main() {
 	glEnable(GL_DEBUG_OUTPUT);
 	glDebugMessageCallback(callbackErrorGL, NULL);
 
-	int idShaderProgram = initShaders("src/shaders/vertexMain.vert", "src/shaders/fragmentMain.frag");
-	if (idShaderProgram < 0) {
-		printf("Fatal error : couldn't create shader program.\n");
-		return -0x04;
-	}
-
-	unsigned int idVertexArray, idVertexBuffer, idElementBuffer, idTextureBuffer, idFrameTexture;
-	glGenVertexArrays(1, &idVertexArray);
-	glGenBuffers(1, &idVertexBuffer);
-	glGenBuffers(1, &idElementBuffer);
-	glGenBuffers(1, &idTextureBuffer);
-	glGenTextures(1, &idFrameTexture);
-
-	glBindVertexArray(idVertexArray);
-	glBindBuffer(GL_ARRAY_BUFFER, idVertexBuffer);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, idElementBuffer);
-
-	const int verticesCount = setupPixels(WIDTH_PIXELS, HEIGHT_PIXELS, glGetAttribLocation(idShaderProgram, "pos"), glGetAttribLocation(idShaderProgram, "textureSampler"), TEXTURE_UNIT);
-	if (verticesCount < 0) {
-		printf("Fatal error : couldn't send pixel data.\n");
+	const Context context = setupPixels(WIDTH_PIXELS, HEIGHT_PIXELS);
+	if (context.status == false) {
+		printf("Fatal error : couldn't set up communication with the shaders.\n");
 		return -0x05;
 	}
-
-	// Unbinds vertex buffer and vertex array objects
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	glBindBuffer(GL_TEXTURE_BUFFER, 0);
-	glBindVertexArray(0);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
 	// Array is dynamically allocated to avoid stack depletion and allow dynamic resolution
 	float *colors = malloc(sizeof(float) * HEIGHT_PIXELS * WIDTH_PIXELS * COLOR_COMPONENTS);
@@ -105,23 +84,13 @@ int main() {
 			}
 		}
 
-		// Drawing
-		glUseProgram(idShaderProgram);
-		glBindVertexArray(idVertexArray);
-		draw(HEIGHT_PIXELS * WIDTH_PIXELS, colors, verticesCount, idTextureBuffer, idFrameTexture, TEXTURE_UNIT);
-		glBindVertexArray(0);
+		draw(context, WIDTH_PIXELS, HEIGHT_PIXELS, colors);
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
 	}
-	
-	glDeleteVertexArrays(1, &idVertexArray);
-	glDeleteBuffers(1, &idVertexBuffer);
-	glDeleteBuffers(1, &idElementBuffer);
-	glDeleteBuffers(1, &idTextureBuffer);
-	glDeleteTextures(1, &idFrameTexture);
-	glDeleteProgram(idShaderProgram);
 
+	terminate(context);
 	glfwTerminate();
 
 	return 0;
