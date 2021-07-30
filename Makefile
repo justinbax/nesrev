@@ -1,14 +1,10 @@
-# Example output (WIN32, default mode):
-# gcc -Wall -DWIN32 -Iinclude -c -o bin/main.o src/main.c
-# gcc -Wall -DWIN32 -o bin/nesrev bin/main.o -Llib -Llib/win32 -lglfw3 -lopengl32 -lgdi32
-
 CC = gcc
 CCFLAGS = -Wall
 
 SRCDIR = src
 BINDIR = bin
 INCLUDEDIR = include
-# BASELIBDIR is used to avoid self-references by appending $(LIBDIR)/platform to itself
+# BASELIBDIR is used to avoid self-references by appending $(LIBDIR)/{platform} to itself
 BASELIBDIR = lib
 LIBDIR = $(BASELIBDIR)
 

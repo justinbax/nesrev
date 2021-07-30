@@ -9,25 +9,9 @@
 #define VERTEX_SIZE 2 // Number of components to a position (in 2D space with x and y coordinates, this is 2).
 // While OpenGL works in 3D space, VERTEX_SIZE is kept as 2 because all position vectors have a constant 1.0f as z component. We can therefore pass a 2D position to the GPU and leave it to the vertex shader to add the z component
 
-#define COLOR_COMPONENTS 3 // Number of components to a color (RGB is 3, RGBA is 4)
-
 // A polygon with n sides can always be dissected in (n - 2) triangles, so the number of indices for such a dissected
 // polygon is its number of triangles multiplied by the number of vertices of a triangle, giving 3(n - 2)
 #define INDICES_PER_POLYGON (VERTEX_COUNT - 2) * 3
-
-// Helper functions
-void callbackErrorGL(GLenum source, GLenum type, GLenum id, GLenum severity, GLsizei length, const GLchar *message, const void *userParam) {
-	if (type == GL_DEBUG_TYPE_ERROR)
-		printf("OpenGL Error 0x%X : %s (severity : 0x%X)\n", type, message, severity);
-}
-
-void callbackErrorGLFW(int code, const char *description) {
-	printf("GLFW Error %i : %s\n", code, description);
-}
-
-void callbackFrameBufferSize(GLFWwindow *window, int width, int height) {
-	glViewport(0, 0, width, height);
-}
 
 const char *readFile(const char *path) {
 	// Returns contents of text file in a stack-allocated char *. The returned pointer has to be deallocated with free by callee
@@ -40,14 +24,14 @@ const char *readFile(const char *path) {
 	fseek(input, 0, SEEK_END);
 	long int size = ftell(input);
 	rewind(input);
-	char *buffer = malloc((size + 1) * sizeof(char)); // TODO make sure this is always deallocated
+	char * buffer = malloc((size + 1) * sizeof(char));
 	if (buffer == NULL) {
 		fclose(input);
 		return NULL;
 	}
 
 	fread(buffer, size * sizeof(char), 1, input);
-	buffer[size] = '\0'; // TODO this can be improved
+	buffer[size] = '\0';
 	fclose(input);
 	return buffer; // TODO this implicitly casts buffer (type char *) to type const char *
 }
@@ -56,6 +40,8 @@ int createShader(const char *path, GLenum type) {
 	// Creates and compiles a shader from a file
 	unsigned int idShader = glCreateShader(type);
 	const char *sourceShader = readFile(path);
+	if (sourceShader == NULL)
+		return -0x01;
 	glShaderSource(idShader, 1, &sourceShader, NULL);
 	glCompileShader(idShader);
 	// TODO this is not elegant, but currently needed
@@ -72,7 +58,7 @@ int createShader(const char *path, GLenum type) {
 		glGetShaderInfoLog(idShader, msgLength, &msgLength, msg);
 		printf("GL Shader Compilation Error : %s\n", msg);
 		free(msg);
-		return -1;
+		return -0x02;
 	}
 	return idShader;
 }
@@ -94,53 +80,23 @@ int createProgram(unsigned int idVertexShader, unsigned int idFragmentShader) {
 		glGetProgramInfoLog(idProgramShader, msgLength, &msgLength, msg);
 		printf("GL Program Linking Error : %s\n", msg);
 		free(msg);
-		return -1;
+		return -0x01;
 	}
 	return idProgramShader;
 }
 
 
 // Interface functions
-GLFWwindow *createWindow(const int width, const int height, const char * name) {
-	// Initializes GLFW and GLEW and creates an OpenGL context. Returns a pointer to a GLFW window
-
-	glfwSetErrorCallback(callbackErrorGLFW);
-	if (!glfwInit()) {
-		printf("Fatal error : GLFW couldn't initialize correctly.\n");
-		return NULL;
-	}
-
-	GLFWwindow *window = glfwCreateWindow(width, height, name, NULL, NULL);
-	if (window == NULL)
-		return NULL;
-	glViewport(0, 0, width, height);
-	glfwSetFramebufferSizeCallback(window, callbackFrameBufferSize);
-	glfwMakeContextCurrent(window);
-
-	// Initializes GLEW
-	if (glewInit() != GLEW_OK) {
-		printf("Fatal error : GLEW couldn't initialize correctly.\n");
-		return NULL;
-	}
-	
-	glEnable(GL_DEBUG_OUTPUT);
-	glDebugMessageCallback(callbackErrorGL, NULL);
-	return window;
-}
-
 int initShaders(const char *vertexShaderPath, const char *fragmentShaderPath) {
 	// Creates and compiles shaders into a shader program and returns it
+	// TODO GLenum expands to unsigned int; half of the possible IDs aren't mapped in ints, though this is unlikely to create problems, as it seems OpenGL generates IDs from 1 going up by 1
 	int idVertexShader = createShader(vertexShaderPath, GL_VERTEX_SHADER);
 	int idFragmentShader = createShader(fragmentShaderPath, GL_FRAGMENT_SHADER);
-	if (idVertexShader == -1 || idFragmentShader == -1) {
-		printf("Fatal error : Shader couldn't compile proprely.\n");
+	if (idVertexShader < 0 || idFragmentShader < 0) 
 		return -0x01;
-	}
 	int idShaderProgram = createProgram(idVertexShader, idFragmentShader);
-	if (idShaderProgram == -1) {
-		printf("Fatal error : Shader program couldn't compile proprely.\n");
+	if (idShaderProgram < 0) 
 		return -0x02;
-	}
 	glUseProgram(idShaderProgram);
 	glDeleteShader(idVertexShader);
 	glDeleteShader(idFragmentShader);
@@ -154,19 +110,25 @@ const int setupPixels(const int width, const int height, unsigned int idPosition
 	// Sets up communication with the fragment shader via a texture unit
 	// A buffer texture is used to send the pixel data to the fragment shader as a sampler
 	// By setting the uniform to TEXTURE_UNIT, the sampler will be associated with the texture unit where the texture resides
-	// TODO check what type of float needs to be used (maybe GL_RGB16F or GL_RGB8F/GL_RGB8I (?) are fine)
 	glUniform1i(idSamplerLocation, textureUnit);
 
 	// Indices of vertices for two triangles forming a rectangle
 	// This array is dynamically allocated to avoid memory depletion in the stack area for setupPixels
-	size_t indicesCount = INDICES_PER_POLYGON * height * width;
+	int indicesCount = INDICES_PER_POLYGON * height * width;
 	unsigned int *indices = malloc(sizeof(float) * indicesCount);
+	if (indices == NULL)
+		return -0x01;
 
 	// Vertex data, buffers and attributes set up
 	// All rectangle vertices in normalized device coordinates and their corresponding rectangle index
 	// This array is also dynamically allocated to avoid memory depletion in the stack area for setupPixels
-	size_t verticesCount = height * width * VERTEX_COUNT * VERTEX_SIZE;
+	int verticesCount = height * width * VERTEX_COUNT * VERTEX_SIZE;
 	float *vertices = malloc(sizeof(float) * verticesCount);
+	if (vertices == NULL) {
+		free(indices);
+		return -0x02;
+	}
+
 	// Normalized width and height are 2/N instead of 1/N because normalized device coordinates range from [-1.0 ; 1.0], giving a total range of 2
 	float pixelWidthNormalized = 2.0f / width;
 	float pixelHeightNormalized = 2.0f / height;
@@ -183,6 +145,7 @@ const int setupPixels(const int width, const int height, unsigned int idPosition
 				// k = 3 : top-right vertex (+x, +y)
 				// TODO this looks like magic, both the left-hand and the right-hand
 				// j + (k & 0b1) adds one to j when k mod 2 == 1. In other words, when k is for one of the right vertices, this adds 1 * pixelWidthNormalized to the x coordinate
+				// "Why are you using k & 0b1, you can check parity with the modulo operator" yeah I really don't care.
 				vertices[(currentPixel * VERTEX_COUNT + k) * VERTEX_SIZE + 0] = pixelWidthNormalized * (j + (k & 0b1)) - 1; // x coordinate
 				// i + (k > 1) adds one to i when k > 1. In other words, when k is for one of the top vertices, this adds 1 * pixelHeightNormalized to the y coordinates
 				vertices[(currentPixel * VERTEX_COUNT + k) * VERTEX_SIZE + 1] = pixelHeightNormalized * (i + (k > 1)) - 1; // y coordinate
@@ -211,7 +174,7 @@ const int setupPixels(const int width, const int height, unsigned int idPosition
 	return verticesCount;
 }
 
-void draw(const int pixelCount, const float * const colors, const int verticesCount, unsigned int idTextureBuffers, unsigned int idFrameTexture, unsigned int textureUnit) {
+void draw(const int pixelCount, const float * const colors, const int verticesCount, unsigned int idTextureBuffers, unsigned int idFrameTexture, const unsigned int textureUnit) {
 	// Draws every pixel with given colors for a single frame
 	// This assumes a valid shader program and vertex array object are already in use / bound and vertices / indices data is already sent to the GPU
 	// This does not unbind any object already bound by callee, nor does it swap buffers or poll events
@@ -220,6 +183,7 @@ void draw(const int pixelCount, const float * const colors, const int verticesCo
 	glActiveTexture(GL_TEXTURE0 + textureUnit);
 	glBindTexture(GL_TEXTURE_BUFFER, idFrameTexture);
 
+	// TODO check what type of float needs to be used (maybe GL_RGB16F or GL_RGB8F/GL_RGB8I (?) are fine)
 	glBindBuffer(GL_TEXTURE_BUFFER, idTextureBuffers);
 	glTexBuffer(GL_TEXTURE_BUFFER, GL_RGB32F, idTextureBuffers);
 	glBufferData(GL_TEXTURE_BUFFER, pixelCount * COLOR_COMPONENTS * sizeof(float), colors, GL_STATIC_DRAW);
