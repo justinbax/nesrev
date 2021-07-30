@@ -36,6 +36,7 @@ int main() {
 	// I think it's therefore straightforward to expect main to create the window and handle it.
 	// Also letting an interface function load two libraries and a graphical API without the callee's knowing sounds like a bad idea.
 	// Finally, features like GL error callback handling should be easily disabled, which becomes much more chaotic through an interface.
+
 	// Creates a GLFW window with and OpenGL context
 	glfwSetErrorCallback(callbackErrorGLFW);
 	if (!glfwInit()) {
@@ -68,18 +69,18 @@ int main() {
 	}
 
 	// Array is dynamically allocated to avoid stack depletion and allow dynamic resolution
-	float *colors = malloc(sizeof(float) * HEIGHT_PIXELS * WIDTH_PIXELS * COLOR_COMPONENTS);
+	uint8_t *colors = malloc(sizeof(uint8_t) * HEIGHT_PIXELS * WIDTH_PIXELS * COLOR_COMPONENTS);
 	if (colors == NULL) {
 		printf("Fatal error : couldn't allocate enough memory.\n");
-		return 0x06;
+		return -0x06;
 	}
 
 	while (!glfwWindowShouldClose(window)) {
 		// Updates every pixel's color
 		for (int i = 0; i < HEIGHT_PIXELS; i++) {
 			for (int j = 0; j < WIDTH_PIXELS; j++) {
-				colors[3 * (WIDTH_PIXELS * i + j) + 0] = (float)(i + 1) / HEIGHT_PIXELS;
-				colors[3 * (WIDTH_PIXELS * i + j) + 1] = (float)(j + 1) / WIDTH_PIXELS;
+				colors[3 * (WIDTH_PIXELS * i + j) + 0] = i;
+				colors[3 * (WIDTH_PIXELS * i + j) + 1] = j;
 				colors[3 * (WIDTH_PIXELS * i + j) + 2] = 0.0f;
 			}
 		}

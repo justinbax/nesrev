@@ -35,10 +35,10 @@ const char *readFile(const char *path) {
 	fread(buffer, size * sizeof(char), 1, input);
 	buffer[size] = '\0';
 	fclose(input);
-	return buffer; // TODO this implicitly casts buffer (type char *) to type const char *
+	return buffer;
 }
 
-int createShader(const char *path, GLenum type) {
+long int createShader(const char *path, GLenum type) {
 	// Creates and compiles a shader from a file
 	unsigned int idShader = glCreateShader(type);
 	const char *sourceShader = readFile(path);
@@ -65,7 +65,7 @@ int createShader(const char *path, GLenum type) {
 	return idShader;
 }
 
-int createProgram(unsigned int idVertexShader, unsigned int idFragmentShader) {
+long int createProgram(unsigned int idVertexShader, unsigned int idFragmentShader) {
 	// Creates and returns the final shader program ID
 	unsigned int idProgramShader = glCreateProgram();
 	glAttachShader(idProgramShader, idVertexShader);
@@ -89,14 +89,15 @@ int createProgram(unsigned int idVertexShader, unsigned int idFragmentShader) {
 
 
 // Interface functions
-int initShaders(const char *vertexShaderPath, const char *fragmentShaderPath) {
+long int initShaders(const char *vertexShaderPath, const char *fragmentShaderPath) {
 	// Creates and compiles shaders into a shader program and returns it
-	// TODO GLenum expands to unsigned int; half of the possible IDs aren't mapped in ints, though this is unlikely to create problems, as it seems OpenGL generates IDs from 1 going up by 1
-	int idVertexShader = createShader(vertexShaderPath, GL_VERTEX_SHADER);
-	int idFragmentShader = createShader(fragmentShaderPath, GL_FRAGMENT_SHADER);
+	// Because GLenum expands to unsigned int and we need signed ints for error handling, we use longs to cover the range of unsigned ints while keeping negative numbers.
+	// This may or may not be necessary, as OpenGL seems to assign IDs from 1 going up by 1. However, the specification says there is no guarantee.
+	long int idVertexShader = createShader(vertexShaderPath, GL_VERTEX_SHADER);
+	long int idFragmentShader = createShader(fragmentShaderPath, GL_FRAGMENT_SHADER);
 	if (idVertexShader < 0 || idFragmentShader < 0) 
 		return -0x01;
-	int idShaderProgram = createProgram(idVertexShader, idFragmentShader);
+	long int idShaderProgram = createProgram(idVertexShader, idFragmentShader);
 	if (idShaderProgram < 0) 
 		return -0x02;
 	glUseProgram(idShaderProgram);
@@ -131,7 +132,7 @@ const Context setupPixels(const int width, const int height) {
 	// Sets up communication with the fragment shader via a texture unit
 	// A buffer texture is used to send the pixel data to the fragment shader as a sampler
 	// By setting the uniform to TEXTURE_UNIT, the sampler will be associated with the texture unit where the texture resides
-	glUniform1i(glGetUniformLocation(context.idShaderProgram, "textureSampler"), TEXTURE_UNIT);
+	glUniform1i(glGetUniformLocation(context.idShaderProgram, "texture"), TEXTURE_UNIT);
 
 	// Indices of vertices for two triangles forming a rectangle
 	// This array is dynamically allocated to avoid memory depletion in the stack area for setupPixels
@@ -150,7 +151,8 @@ const Context setupPixels(const int width, const int height) {
 	// Normalized width and height are 2/N instead of 1/N because normalized device coordinates range from [-1.0 ; 1.0], giving a total range of 2
 	float pixelWidthNormalized = 2.0f / width;
 	float pixelHeightNormalized = 2.0f / height;
-
+	
+	// TODO this whole thing looks like magic, but is also very ugly
 	for (int i = 0; i < height; i++) {
 		for (int j = 0; j < width; j++) {
 			int currentPixel = i * width + j;
@@ -161,7 +163,6 @@ const Context setupPixels(const int width, const int height) {
 				// k = 1 : bottom-right vertex (+x, -y)
 				// k = 2 : top-left vertex (-x, +y)
 				// k = 3 : top-right vertex (+x, +y)
-				// TODO this looks like magic, both the left-hand and the right-hand
 				// j + (k & 0b1) adds one to j when k mod 2 == 1. In other words, when k is for one of the right vertices, this adds 1 * pixelWidthNormalized to the x coordinate
 				// "Why are you using k & 0b1, you can check parity with the modulo operator" yeah I really don't care.
 				vertices[(currentPixel * VERTEX_COUNT + k) * VERTEX_SIZE + 0] = pixelWidthNormalized * (j + (k & 0b1)) - 1; // x coordinate
@@ -169,7 +170,6 @@ const Context setupPixels(const int width, const int height) {
 				vertices[(currentPixel * VERTEX_COUNT + k) * VERTEX_SIZE + 1] = pixelHeightNormalized * (i + (k > 1)) - 1; // y coordinate
 			}
 			// For each rectangle, this fills the indices array with the correct indices to dissect it into two triangles
-			// TODO this looks like magic
 			indices[currentPixel * INDICES_PER_POLYGON + 0] = currentPixel * VERTEX_COUNT + 0; // first triangle : bottom-left
 			indices[currentPixel * INDICES_PER_POLYGON + 1] = currentPixel * VERTEX_COUNT + 1; // first triangle : bottom-right
 			indices[currentPixel * INDICES_PER_POLYGON + 2] = currentPixel * VERTEX_COUNT + 2; // first triangle : top-left
@@ -200,7 +200,7 @@ const Context setupPixels(const int width, const int height) {
 	return context;
 }
 
-void draw(const Context context, const int width, const int height, const float * const colors) {
+void draw(const Context context, const int width, const int height, const uint8_t * const colors) {
 	// Draws every pixel with given colors for a single frame
 	// This assumes a valid shader program and vertex array object are already in use / bound and vertices / indices data is already sent to the GPU
 	// This does not unbind any object already bound by callee, nor does it swap buffers or poll events
@@ -212,10 +212,15 @@ void draw(const Context context, const int width, const int height, const float 
 	glActiveTexture(GL_TEXTURE0 + TEXTURE_UNIT);
 	glBindTexture(GL_TEXTURE_BUFFER, context.idFrameTexture);
 
-	// TODO check what type of float needs to be used (maybe GL_RGB16F or GL_RGB8F/GL_RGB8I (?) are fine)
+	// For some reason, glTexBuffer doesn't accept GL_RGB8, but it does accept GL_R8, so we send all values as colors with a single red component and seperate the red, green and blue components in the shader
+	// There are 3 alternatives :
+	// GL_RGB32F, using 4 times as much memory but removing the need for OpenGL to normalize the integers (range [0, 255]) to floats (range [0, 1]) AND the need to fetch each red, green and blue component ;
+	// GL_R16F, using twice as much memory and using weird half-floats but removing the need for OpenGL to normalize the integers to floats
+	// GL_RGBA8, using 33% more memory but removing the need to fetch each red, green and blue component.
+	// TODO Some testing may be done to find out which is best
 	glBindBuffer(GL_TEXTURE_BUFFER, context.idTextureBuffer);
-	glTexBuffer(GL_TEXTURE_BUFFER, GL_RGB32F, context.idTextureBuffer);
-	glBufferData(GL_TEXTURE_BUFFER, width * height * COLOR_COMPONENTS * sizeof(float), colors, GL_STATIC_DRAW);
+	glTexBuffer(GL_TEXTURE_BUFFER, GL_R8, context.idTextureBuffer);
+	glBufferData(GL_TEXTURE_BUFFER, width * height * COLOR_COMPONENTS * sizeof(uint8_t), colors, GL_STATIC_DRAW);
 
 	glDrawElements(GL_TRIANGLES, context.verticesCount, GL_UNSIGNED_INT, (void *)0);
 
