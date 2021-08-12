@@ -6,6 +6,7 @@
 #include "GLFW/glfw3.h"
 
 #include "graphics.h"
+#include "cpu.h"
 
 // Number of pixels on the x and y axies
 #define HEIGHT_PIXELS 240
@@ -62,7 +63,7 @@ int main() {
 	glEnable(GL_DEBUG_OUTPUT);
 	glDebugMessageCallback(callbackErrorGL, NULL);
 
-	const Context context = setupPixels(WIDTH_PIXELS, HEIGHT_PIXELS);
+	const Context context = setupContext(WIDTH_PIXELS, HEIGHT_PIXELS);
 	if (context.status == false) {
 		printf("Fatal error : couldn't set up communication with the shaders.\n");
 		return -0x05;
@@ -91,7 +92,7 @@ int main() {
 		glfwPollEvents();
 	}
 
-	terminate(context);
+	terminateContext(context);
 	glfwTerminate();
 
 	return 0;

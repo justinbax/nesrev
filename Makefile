@@ -8,10 +8,11 @@ INCLUDEDIR = include
 BASELIBDIR = lib
 LIBDIR = $(BASELIBDIR)
 
-# All source files found within src/ with corresponding object files
+# All source and header files found within src/ with corresponding object files for .c files
 SRCFILES = $(wildcard $(SRCDIR)/*.c)
 OBJFILES = $(SRCFILES:$(SRCDIR)/%.c=$(BINDIR)/%.o)
 EXECUTABLE = $(BINDIR)/nesrev
+HEADFILES = $(wildcard $(SRCDIR)/*.h)
 
 LIBRARIES = glfw3 glew32 opengl32
 
@@ -35,7 +36,7 @@ release: $(EXECUTABLE)
 $(EXECUTABLE): $(OBJFILES)
 	$(CC) $(CCFLAGS) -o $(EXECUTABLE) $(OBJFILES) $(addprefix -L,$(LIBDIR)) $(addprefix -l,$(LIBRARIES))
 
-$(BINDIR)/%.o: $(SRCDIR)/%.c
+$(BINDIR)/%.o: $(SRCDIR)/%.c $(HEADFILES)
 	$(CC) $(CCFLAGS) -I$(INCLUDEDIR) -c -o $@ $<
 
 .phony: all debug release

@@ -106,7 +106,7 @@ long int initShaders(const char *vertexShaderPath, const char *fragmentShaderPat
 	return idShaderProgram;
 }
 
-const Context setupPixels(const int width, const int height) {
+const Context setupContext(const int width, const int height) {
 	// Sets up vertex information and sends it to bound array and element array buffers
 	// Returns a Context object containing all handlers information needed for drawing and terminating
 	Context context;
@@ -164,7 +164,7 @@ const Context setupPixels(const int width, const int height) {
 				// k = 2 : top-left vertex (-x, +y)
 				// k = 3 : top-right vertex (+x, +y)
 				// j + (k & 0b1) adds one to j when k mod 2 == 1. In other words, when k is for one of the right vertices, this adds 1 * pixelWidthNormalized to the x coordinate
-				// "Why are you using k & 0b1, you can check parity with the modulo operator" yeah I really don't care.
+				// "Why are you using k & 0b1, you can check parity with the modulo operator" yeah I really don't care. 
 				vertices[(currentPixel * VERTEX_COUNT + k) * VERTEX_SIZE + 0] = pixelWidthNormalized * (j + (k & 0b1)) - 1; // x coordinate
 				// i + (k > 1) adds one to i when k > 1. In other words, when k is for one of the top vertices, this adds 1 * pixelHeightNormalized to the y coordinates
 				vertices[(currentPixel * VERTEX_COUNT + k) * VERTEX_SIZE + 1] = pixelHeightNormalized * (i + (k > 1)) - 1; // y coordinate
@@ -228,7 +228,7 @@ void draw(const Context context, const int width, const int height, const uint8_
 	glBindVertexArray(0);
 }
 
-void terminate(const Context context) {
+void terminateContext(const Context context) {
 	glDeleteVertexArrays(1, &context.idVertexArray);
 	glDeleteBuffers(1, &context.idVertexBuffer);
 	glDeleteBuffers(1, &context.idElementBuffer);

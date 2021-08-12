@@ -23,8 +23,8 @@ typedef struct {
 } Context;
 
 long int initShaders(const char *vertexShaderPath, const char *fragmentShaderPath);
-const Context setupPixels(const int width, const int height);
+const Context setupContext(const int width, const int height);
 void draw(const Context context, const int width, const int height, const uint8_t * const colors);
-void terminate(const Context context);
+void terminateContext(const Context context);
 
 #endif // ifndef GRAPHICS_H
