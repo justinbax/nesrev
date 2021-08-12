@@ -680,6 +680,7 @@ extern inline void tickCPU(CPU *cpu) {
 			case (0x6A << 3) | 0b001: read(PROGCOUNTER(cpu)); if (cpu->carryFlag) {cpu->carryFlag = cpu->A & 0b00000001; cpu->A >>= 1; cpu->A |= 0b10000000;} else {cpu->carryFlag = cpu->A & 0b00000001; cpu->A >>= 1;} END(cpu); break;
 
 			// ARR_IMM
+			// TODO some sources say the V flag is set from the XOR of bit 6 and 7 of A, not bit 5 and 6
 			case (0x6B << 3) | 0b001: cpu->B = fetch(cpu); cpu->A &= cpu->B; cpu->A >>= 1; if (cpu->carryFlag) cpu->A |= 0b10000000; nzFlags(cpu, cpu->A); cpu->carryFlag = cpu->A & 0b01000000; cpu->oflowFlag = (cpu->A & 0b01000000) ^ (cpu->A & 0b00100000); END(cpu); break;
 
 			// JMP_IND
@@ -786,34 +787,147 @@ extern inline void tickCPU(CPU *cpu) {
 			case (0x7F << 3) | 0b101: write(DATAPTR(cpu), cpu->B); if (cpu->carryFlag) {cpu->carryFlag = cpu->B & 0b00000001; cpu->B >>= 1; cpu->B |= 0b10000000;} else {cpu->carryFlag = cpu->B & 0b00000001; cpu->B >>= 1;} add(cpu, cpu->B); break;
 			case (0x7F << 3) | 0b110: write(DATAPTR(cpu), cpu->B); END(cpu); break;
 
-			case (0x81 << 3) | 0b001: break; // STA_IZX
-			case (0x83 << 3) | 0b001: break; // SAX_IZX
-			case (0x84 << 3) | 0b001: break; // STY_ZP
-			case (0x85 << 3) | 0b001: break; // STA_ZP
-			case (0x86 << 3) | 0b001: break; // STX_ZP
-			case (0x87 << 3) | 0b001: break; // SAX_ZP
-			case (0x88 << 3) | 0b001: break; // DEY
-			case (0x8A << 3) | 0b001: break; // TXA
-			case (0x8B << 3) | 0b001: break; // XAA_IMM
-			case (0x8C << 3) | 0b001: break; // STY_ABS
-			case (0x8D << 3) | 0b001: break; // STA_ABS
-			case (0x8E << 3) | 0b001: break; // STX_ABS
-			case (0x8F << 3) | 0b001: break; // SAX_ABS
-			case (0x90 << 3) | 0b001: break; // BCC
-			case (0x91 << 3) | 0b001: break; // STA_IZY
-			case (0x93 << 3) | 0b001: break; // AHX_IZY
-			case (0x94 << 3) | 0b001: break; // STY_ZPX
-			case (0x95 << 3) | 0b001: break; // STA_ZPX
-			case (0x96 << 3) | 0b001: break; // STX_ZPY
-			case (0x97 << 3) | 0b001: break; // SAX_ZPY
-			case (0x98 << 3) | 0b001: break; // TYA
-			case (0x99 << 3) | 0b001: break; // STA_ABY
-			case (0x9A << 3) | 0b001: break; // TXS
-			case (0x9B << 3) | 0b001: break; // TAS_ABY
-			case (0x9C << 3) | 0b001: break; // SHY_ABX
-			case (0x9D << 3) | 0b001: break; // STA_ABX
-			case (0x9E << 3) | 0b001: break; // SHX_ABY
-			case (0x9F << 3) | 0b001: break; // AHX_ABY
+			// STA_IZX
+			case (0x81 << 3) | 0b001:
+			case (0x81 << 3) | 0b010:
+			case (0x81 << 3) | 0b011:
+			case (0x81 << 3) | 0b100: izxAddressing(cpu); break;
+			case (0x81 << 3) | 0b101: write(DATAPTR(cpu), cpu->A); END(cpu); break;
+
+			// SAX_IZX
+			case (0x83 << 3) | 0b001:
+			case (0x83 << 3) | 0b010:
+			case (0x83 << 3) | 0b011:
+			case (0x83 << 3) | 0b100: izxAddressing(cpu); break;
+			case (0x83 << 3) | 0b101: write(DATAPTR(cpu), cpu->A & cpu->X); END(cpu); break;
+
+			// STY_ZP
+			case (0x84 << 3) | 0b001: cpu->DPL = fetch(cpu); break;
+			case (0x84 << 3) | 0b010: write(0x0000 | cpu->DPL, cpu->Y); END(cpu); break;
+
+			// STY_ZP
+			case (0x85 << 3) | 0b001: cpu->DPL = fetch(cpu); break;
+			case (0x85 << 3) | 0b010: write(0x0000 | cpu->DPL, cpu->A); END(cpu); break;
+
+			// STY_ZP
+			case (0x86 << 3) | 0b001: cpu->DPL = fetch(cpu); break;
+			case (0x86 << 3) | 0b010: write(0x0000 | cpu->DPL, cpu->X); END(cpu); break;
+
+			// STY_ZP
+			case (0x87 << 3) | 0b001: cpu->DPL = fetch(cpu); break;
+			case (0x87 << 3) | 0b010: write(0x0000 | cpu->DPL, cpu->A & cpu->X); END(cpu); break;
+
+			// DEY
+			case (0x88 << 3) | 0b001: read(PROGCOUNTER(cpu)); cpu->Y--; nzFlags(cpu, cpu->Y); END(cpu); break;
+			
+			// TXA
+			case (0x8A << 3) | 0b001: read(PROGCOUNTER(cpu)); cpu->A = cpu->X; nzFlags(cpu, cpu->A); END(cpu); break;
+
+			// XAA_IMM
+			// TODO sources contradict each other regarding this
+			case (0x8B << 3) | 0b001: cpu->A |= 0xEE; cpu->A &= cpu->X; cpu->A &= fetch(cpu); nzFlags(cpu, cpu->A); END(cpu); break;
+
+			// STY_ABS
+			case (0x8C << 3) | 0b001:
+			case (0x8C << 3) | 0b010: absAddressing(cpu, 0); break;
+			case (0x8C << 3) | 0b011: write(DATAPTR(cpu), cpu->Y); END(cpu); break;
+
+			// STA_ABS
+			case (0x8D << 3) | 0b001:
+			case (0x8D << 3) | 0b010: absAddressing(cpu, 0); break;
+			case (0x8D << 3) | 0b011: write(DATAPTR(cpu), cpu->A); END(cpu); break;
+
+			// STX_ABS
+			case (0x8E << 3) | 0b001:
+			case (0x8E << 3) | 0b010: absAddressing(cpu, 0); break;
+			case (0x8E << 3) | 0b011: write(DATAPTR(cpu), cpu->X); END(cpu); break;
+
+			// SAX_ABS
+			case (0x8F << 3) | 0b001:
+			case (0x8F << 3) | 0b010: absAddressing(cpu, 0); break;
+			case (0x8F << 3) | 0b011: write(DATAPTR(cpu), cpu->A & cpu->X); END(cpu); break;
+
+			// BCC
+			case (0x90 << 3) | 0b001:
+			case (0x90 << 3) | 0b010:
+			case (0x90 << 3) | 0b011: branch(cpu, !cpu->carryFlag); END(cpu); break;
+
+			// STA_IZY
+			case (0x91 << 3) | 0b001:
+			case (0x91 << 3) | 0b010:
+			case (0x91 << 3) | 0b011: izyAddressing(cpu); break;
+			case (0x91 << 3) | 0b100: read(DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; break;
+			case (0x91 << 3) | 0b101: write(DATAPTR(cpu), cpu->A); END(cpu); break;
+
+			// AHX_IZY
+			case (0x93 << 3) | 0b001:
+			case (0x93 << 3) | 0b010:
+			case (0x93 << 3) | 0b011: izyAddressing(cpu); break;
+			case (0x93 << 3) | 0b100: read(DATAPTR(cpu)); cpu->temp = cpu->DPH + 1; if (cpu->DPL < cpu->Y) cpu->DPH++; break;
+			case (0x93 << 3) | 0b101: write(DATAPTR(cpu), cpu->A & cpu->X & cpu->temp); END(cpu); break;
+
+			// STY_ZPX
+			case (0x94 << 3) | 0b001:
+			case (0x94 << 3) | 0b010: zpiAddressing(cpu, cpu->X); break;
+			case (0x94 << 3) | 0b011: write(0x0000 | cpu->DPL, cpu->Y); END(cpu); break;
+
+			// STA_ZPX
+			case (0x95 << 3) | 0b001:
+			case (0x95 << 3) | 0b010: zpiAddressing(cpu, cpu->X); break;
+			case (0x95 << 3) | 0b011: write(0x0000 | cpu->DPL, cpu->A); END(cpu); break;
+
+			// STX_ZPY
+			case (0x96 << 3) | 0b001:
+			case (0x96 << 3) | 0b010: zpiAddressing(cpu, cpu->Y); break;
+			case (0x96 << 3) | 0b011: write(0x0000 | cpu->DPL, cpu->X); END(cpu); break;
+
+			// SAX_ZPY
+			case (0x97 << 3) | 0b001:
+			case (0x97 << 3) | 0b010: zpiAddressing(cpu, cpu->Y); break;
+			case (0x97 << 3) | 0b011: write(0x0000 | cpu->DPL, cpu->A & cpu->X); END(cpu); break;
+
+			// TYA
+			case (0x98 << 3) | 0b001: read(PROGCOUNTER(cpu)); cpu->A = cpu->Y; nzFlags(cpu, cpu->A); END(cpu); break;
+
+			// STA_ABY
+			case (0x99 << 3) | 0b001:
+			case (0x99 << 3) | 0b010: absAddressing(cpu, cpu->Y); break;
+			case (0x99 << 3) | 0b011: read(DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; break;
+			case (0x99 << 3) | 0b100: write(DATAPTR(cpu), cpu->A); END(cpu); break;
+
+			// TXS
+			case (0x9A << 3) | 0b001: read(PROGCOUNTER(cpu)); cpu->SP = cpu->X; END(cpu); break;
+
+			// TAS_ABY
+			case (0x9B << 3) | 0b001:
+			case (0x9B << 3) | 0b010: absAddressing(cpu, cpu->Y); break;
+			case (0x9B << 3) | 0b011: read(DATAPTR(cpu)); cpu->SP = cpu->A & cpu->X; cpu->temp = cpu->DPH + 1; if (cpu->DPL < cpu->Y) cpu->DPH++; break;
+			case (0x9B << 3) | 0b100: write(DATAPTR(cpu), cpu->A & cpu->X & cpu->temp); END(cpu); break;
+
+			// SHY_ABX
+			case (0x9C << 3) | 0b001:
+			case (0x9C << 3) | 0b010: absAddressing(cpu, cpu->X); break;
+			case (0x9C << 3) | 0b011: read(DATAPTR(cpu)); cpu->temp = cpu->DPH + 1; if (cpu->DPL < cpu->X) cpu->DPH++; break;
+			case (0x9C << 3) | 0b100: write(DATAPTR(cpu), cpu->X & cpu->temp); END(cpu); break;
+
+			// STA_ABX
+			case (0x9D << 3) | 0b001:
+			case (0x9D << 3) | 0b010: absAddressing(cpu, cpu->X); break;
+			case (0x9D << 3) | 0b011: read(DATAPTR(cpu)); if (cpu->DPL < cpu->X) cpu->DPH++; break;
+			case (0x9D << 3) | 0b100: write(DATAPTR(cpu), cpu->A); END(cpu); break;
+
+			// SHX_ABY
+			case (0x9E << 3) | 0b001:
+			case (0x9E << 3) | 0b010: absAddressing(cpu, cpu->Y); break;
+			case (0x9E << 3) | 0b011: read(DATAPTR(cpu)); cpu->temp = cpu->DPH + 1; if (cpu->DPL < cpu->Y) cpu->DPH++; break;
+			case (0x9E << 3) | 0b100: write(DATAPTR(cpu), cpu->X & cpu->temp); END(cpu); break;
+
+			// AHX_ABY
+			case (0x9F << 3) | 0b001:
+			case (0x9F << 3) | 0b010: absAddressing(cpu, cpu->Y); break;
+			case (0x9F << 3) | 0b011: read(DATAPTR(cpu)); cpu->temp = cpu->DPH + 1; if (cpu->DPL < cpu->Y) cpu->DPH++; break;
+			case (0x9F << 3) | 0b100: write(DATAPTR(cpu), cpu->A & cpu->X & cpu->temp); END(cpu); break;
+
 			case (0xA0 << 3) | 0b001: break; // LDY_IMM
 			case (0xA1 << 3) | 0b001: break; // LDA_IMM
 			case (0xA2 << 3) | 0b001: break; // LDX_IMM
