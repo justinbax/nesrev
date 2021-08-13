@@ -124,8 +124,8 @@ extern inline void izyAddressing(CPU *cpu) {
 
 extern inline void branch(CPU *cpu, bool condition) {
 	switch (cpu->step) {
-		case 1: cpu->temp = fetch(cpu); if (condition) END(cpu); break;
-		case 2: read(PROGCOUNTER(cpu)); cpu->PCL += (cpu->temp - 128); if (!((cpu->temp < 128 && cpu->PCL > cpu->temp) || (cpu->temp > 128 && cpu->PCL < cpu->temp))) {END(cpu); cpu->PCL++; cpu->PCH += !cpu->PCL;} break;
+		case 1: cpu->temp = fetch(cpu); if (!condition) END(cpu); break;
+		case 2: read(PROGCOUNTER(cpu)); cpu->PCL += (cpu->temp & 0b10000000 > 0 ? cpu->temp - 256 : cpu->temp); if (!((cpu->temp & 0b10000000 == 0 && cpu->PCL < cpu->temp) || (cpu->temp & 0b10000000 > 0 && cpu->PCL > (~cpu->temp) + 1))) END(cpu); break;
 		case 3: read(PROGCOUNTER(cpu)); if (cpu->temp < 128 && cpu->PCL > cpu->temp) cpu->PCH--; else cpu->PCH++; break;
 	}
 }
@@ -143,9 +143,6 @@ extern inline void add(CPU *cpu, uint8_t value) {
 	nzFlags(cpu, cpu->A);
 }
 
-extern inline void sub(CPU *cpu, uint8_t value) {
-	// TODO this
-}
 
 void initCPU(CPU *cpu) {
 	cpu->A = cpu->X = cpu->Y = 0;
@@ -240,7 +237,7 @@ extern inline void tickCPU(CPU *cpu) {
 
 			// BPL
 			case (0x10 << 3) | 0b001:
-			case (0x10 << 3) | 0b010:
+			case (0x10 << 3) | 0b010: branch(cpu, !cpu->negFlag); break;
 			case (0x10 << 3) | 0b011: branch(cpu, !cpu->negFlag); END(cpu); break;
 
 			// ORA_IZY
@@ -399,7 +396,7 @@ extern inline void tickCPU(CPU *cpu) {
 
 			// BMI
 			case (0x30 << 3) | 0b001:
-			case (0x30 << 3) | 0b010:
+			case (0x30 << 3) | 0b010: branch(cpu, cpu->negFlag); break;
 			case (0x30 << 3) | 0b011: branch(cpu, cpu->negFlag); END(cpu); break;
 
 			// AND_IZY
@@ -552,7 +549,7 @@ extern inline void tickCPU(CPU *cpu) {
 
 			// BVC
 			case (0x50 << 3) | 0b001:
-			case (0x50 << 3) | 0b010:
+			case (0x50 << 3) | 0b010: branch(cpu, !cpu->oflowFlag); break;
 			case (0x50 << 3) | 0b011: branch(cpu, !cpu->oflowFlag); END(cpu); break;
 
 			// EOR_IZY
@@ -710,7 +707,7 @@ extern inline void tickCPU(CPU *cpu) {
 
 			// BVS
 			case (0x70 << 3) | 0b001:
-			case (0x70 << 3) | 0b010:
+			case (0x70 << 3) | 0b010: branch(cpu, cpu->oflowFlag); break;
 			case (0x70 << 3) | 0b011: branch(cpu, cpu->oflowFlag); END(cpu); break;
 
 			// ADC_IZY
@@ -849,7 +846,7 @@ extern inline void tickCPU(CPU *cpu) {
 
 			// BCC
 			case (0x90 << 3) | 0b001:
-			case (0x90 << 3) | 0b010:
+			case (0x90 << 3) | 0b010: branch(cpu, !cpu->carryFlag); break;
 			case (0x90 << 3) | 0b011: branch(cpu, !cpu->carryFlag); END(cpu); break;
 
 			// STA_IZY
@@ -928,90 +925,462 @@ extern inline void tickCPU(CPU *cpu) {
 			case (0x9F << 3) | 0b011: read(DATAPTR(cpu)); cpu->temp = cpu->DPH + 1; if (cpu->DPL < cpu->Y) cpu->DPH++; break;
 			case (0x9F << 3) | 0b100: write(DATAPTR(cpu), cpu->A & cpu->X & cpu->temp); END(cpu); break;
 
-			case (0xA0 << 3) | 0b001: break; // LDY_IMM
-			case (0xA1 << 3) | 0b001: break; // LDA_IMM
-			case (0xA2 << 3) | 0b001: break; // LDX_IMM
-			case (0xA3 << 3) | 0b001: break; // LAX_IZX
-			case (0xA4 << 3) | 0b001: break; // LDY_ZP
-			case (0xA5 << 3) | 0b001: break; // LDA_ZP
-			case (0xA6 << 3) | 0b001: break; // LDX_ZP
-			case (0xA7 << 3) | 0b001: break; // LAX_ZP
-			case (0xA8 << 3) | 0b001: break; // TAY
-			case (0xA9 << 3) | 0b001: break; // LDA_IMM
-			case (0xAA << 3) | 0b001: break; // TAX
-			case (0xAB << 3) | 0b001: break; // LAX_IMM
-			case (0xAC << 3) | 0b001: break; // LDY_ABS
-			case (0xAD << 3) | 0b001: break; // LDA_ABS
-			case (0xAE << 3) | 0b001: break; // LDX_ABS
-			case (0xAF << 3) | 0b001: break; // LAX_ABS
-			case (0xB0 << 3) | 0b001: break; // BCS
-			case (0xB1 << 3) | 0b001: break; // LDA_IZY
-			case (0xB3 << 3) | 0b001: break; // LAX_IZY
-			case (0xB4 << 3) | 0b001: break; // LDY_ZPX
-			case (0xB5 << 3) | 0b001: break; // LDA_ZPX
-			case (0xB6 << 3) | 0b001: break; // LDX_ZPY
-			case (0xB7 << 3) | 0b001: break; // LAX_ZPY
-			case (0xB8 << 3) | 0b001: break; // CLV
-			case (0xB9 << 3) | 0b001: break; // LDA_ABY
-			case (0xBA << 3) | 0b001: break; // TSX
-			case (0xBB << 3) | 0b001: break; // LAS_ABY
-			case (0xBC << 3) | 0b001: break; // LDY_ABX
-			case (0xBD << 3) | 0b001: break; // LDA_ABX
-			case (0xBE << 3) | 0b001: break; // LDX_ABY
-			case (0xBF << 3) | 0b001: break; // LAX_ABY
-			case (0xC0 << 3) | 0b001: break; // CPY_IMM
-			case (0xC1 << 3) | 0b001: break; // CPM_IZX
-			case (0xC3 << 3) | 0b001: break; // DCP_IZX
-			case (0xC4 << 3) | 0b001: break; // CPY_ZP
-			case (0xC5 << 3) | 0b001: break; // CMP_ZP
-			case (0xC6 << 3) | 0b001: break; // DEC_ZP
-			case (0xC7 << 3) | 0b001: break; // DCP_ZP
-			case (0xC8 << 3) | 0b001: break; // INY
-			case (0xC9 << 3) | 0b001: break; // CMP_IMM
-			case (0xCA << 3) | 0b001: break; // DEX
-			case (0xCB << 3) | 0b001: break; // AXS_IMM
-			case (0xCC << 3) | 0b001: break; // CPY_ABS
-			case (0xCD << 3) | 0b001: break; // CMP_ABS
-			case (0xCE << 3) | 0b001: break; // DEC_ABS
-			case (0xCF << 3) | 0b001: break; // DCP_ABS
-			case (0xD0 << 3) | 0b001: break; // BNE
-			case (0xD1 << 3) | 0b001: break; // CMP_IZY
-			case (0xD3 << 3) | 0b001: break; // DCP_IZY
-			case (0xD5 << 3) | 0b001: break; // CMP_ZPX
-			case (0xD6 << 3) | 0b001: break; // DEC_ZPX
-			case (0xD7 << 3) | 0b001: break; // DCP_ZPX
-			case (0xD8 << 3) | 0b001: break; // CLD
-			case (0xD9 << 3) | 0b001: break; // CMP_ABY
-			case (0xDB << 3) | 0b001: break; // DCP_ABY
-			case (0xDD << 3) | 0b001: break; // CMP_ABX
-			case (0xDE << 3) | 0b001: break; // DEC_ABX
-			case (0xDF << 3) | 0b001: break; // DCP_ABX
-			case (0xE0 << 3) | 0b001: break; // CPX_IMM
-			case (0xE1 << 3) | 0b001: break; // SBC_IZY
-			case (0xE3 << 3) | 0b001: break; // ISC_IZX
-			case (0xE4 << 3) | 0b001: break; // CPX_ZP
-			case (0xE5 << 3) | 0b001: break; // SBC_ZP
-			case (0xE6 << 3) | 0b001: break; // INC_ZP
-			case (0xE7 << 3) | 0b001: break; // ISC_ZP
-			case (0xE8 << 3) | 0b001: break; // INX
-			case (0xE9 << 3) | 0b001: break; // SBC_IMM NOTE EB IS ALSO SBC_IMM
-			case (0xEB << 3) | 0b001: break; // SBC_IMM NOTE E9 IS ALSO SBC_IMM
-			case (0xEC << 3) | 0b001: break; // CPX_ABS
-			case (0xED << 3) | 0b001: break; // SBC_ABS
-			case (0xEE << 3) | 0b001: break; // INC_ABS
-			case (0xEF << 3) | 0b001: break; // ISC_ABS
-			case (0xF0 << 3) | 0b001: break; // BEQ
-			case (0xF1 << 3) | 0b001: break; // SBC_IZY
-			case (0xF3 << 3) | 0b001: break; // ISC_IZY
-			case (0xF5 << 3) | 0b001: break; // SBC_ZPX
-			case (0xF6 << 3) | 0b001: break; // INC_ZPX
-			case (0xF7 << 3) | 0b001: break; // ISC_ZPX
-			case (0xF8 << 3) | 0b001: break; // SED
-			case (0xF9 << 3) | 0b001: break; // SBC_ABY
-			case (0xFB << 3) | 0b001: break; // ISC_ABY
-			case (0xFD << 3) | 0b001: break; // SBC_ABX
-			case (0xFE << 3) | 0b001: break; // INC_ABX
-			case (0xFF << 3) | 0b001: break; // ISC_ABX
+			// LDY_IMM
+			case (0xA0 << 3) | 0b001: cpu->Y = fetch(cpu); nzFlags(cpu, cpu->Y); END(cpu); break;
+
+			// LDA_IZX
+			case (0xA1 << 3) | 0b001:
+			case (0xA1 << 3) | 0b010:
+			case (0xA1 << 3) | 0b011:
+			case (0xA1 << 3) | 0b100: izxAddressing(cpu);
+			case (0xA1 << 3) | 0b101: cpu->A = read(DATAPTR(cpu)); nzFlags(cpu, cpu->A); END(cpu); break;
+			
+			// LDX_IMM
+			case (0xA2 << 3) | 0b001: cpu->X = fetch(cpu); nzFlags(cpu, cpu->X); END(cpu); break;
+
+			// LAX_IZX
+			case (0xA3 << 3) | 0b001:
+			case (0xA3 << 3) | 0b010:
+			case (0xA3 << 3) | 0b011:
+			case (0xA3 << 3) | 0b100: izxAddressing(cpu);
+			case (0xA3 << 3) | 0b101: cpu->X = read(DATAPTR(cpu)); cpu->A = cpu->X; nzFlags(cpu, cpu->A); END(cpu); break;
+
+			// LDY_ZP
+			case (0xA4 << 3) | 0b001: cpu->DPL = fetch(cpu);
+			case (0xA4 << 3) | 0b010: cpu->Y = read(0x0000 | cpu->DPL); nzFlags(cpu, cpu->Y); END(cpu); break;
+
+			// LDA_ZP
+			case (0xA5 << 3) | 0b001: cpu->DPL = fetch(cpu);
+			case (0xA5 << 3) | 0b010: cpu->A = read(0x0000 | cpu->DPL); nzFlags(cpu, cpu->A); END(cpu); break;
+
+			// LDX_ZP
+			case (0xA6 << 3) | 0b001: cpu->DPL = fetch(cpu);
+			case (0xA6 << 3) | 0b010: cpu->X = read(0x0000 | cpu->DPL); nzFlags(cpu, cpu->X); END(cpu); break;
+
+			// LAX_ZP
+			case (0xA7 << 3) | 0b001: cpu->DPL = fetch(cpu);
+			case (0xA7 << 3) | 0b010: cpu->X = read(0x0000 | cpu->DPL); cpu->A = cpu->X; nzFlags(cpu, cpu->A); END(cpu); break;
+
+			// TAY
+			case (0xA8 << 3) | 0b001: read(PROGCOUNTER(cpu)); cpu->Y = cpu->A; nzFlags(cpu, cpu->Y); END(cpu); break;
+
+			// LDA_IMM
+			case (0xA9 << 3) | 0b001: cpu->A = fetch(cpu); nzFlags(cpu, cpu->A); END(cpu); break;
+
+			// TAX
+			case (0xAA << 3) | 0b001: read(PROGCOUNTER(cpu)); cpu->X = cpu->A; nzFlags(cpu, cpu->X); END(cpu); break;
+
+			// LAX_IMM
+			// TODO not even all sources mention the immediate mode of this operation, and it is said to be unstable
+			case (0xAB << 3) | 0b001: cpu->A &= fetch(cpu); cpu->X = cpu->A; nzFlags(cpu, cpu->X); END(cpu); break;
+
+			// LDY_ABS
+			case (0xAC << 3) | 0b001:
+			case (0xAC << 3) | 0b010: absAddressing(cpu, 0); break;
+			case (0xAC << 3) | 0b011: cpu->Y = read(DATAPTR(cpu)); nzFlags(cpu, cpu->Y); END(cpu); break;
+
+			// LDA_ABS
+			case (0xAD << 3) | 0b001:
+			case (0xAD << 3) | 0b010: absAddressing(cpu, 0); break;
+			case (0xAD << 3) | 0b011: cpu->A = read(DATAPTR(cpu)); nzFlags(cpu, cpu->A); END(cpu); break;
+
+			// LDX_ABS
+			case (0xAE << 3) | 0b001:
+			case (0xAE << 3) | 0b010: absAddressing(cpu, 0); break;
+			case (0xAE << 3) | 0b011: cpu->X = read(DATAPTR(cpu)); nzFlags(cpu, cpu->X); END(cpu); break;
+
+			// LAX_ABS
+			case (0xAF << 3) | 0b001:
+			case (0xAF << 3) | 0b010: absAddressing(cpu, 0); break;
+			case (0xAF << 3) | 0b011: cpu->X = read(DATAPTR(cpu)); cpu->A = cpu->X; nzFlags(cpu, cpu->X); END(cpu); break;
+
+			// BCS
+			case (0xB0 << 3) | 0b001:
+			case (0xB0 << 3) | 0b010: branch(cpu, cpu->carryFlag); break;
+			case (0xB0 << 3) | 0b011: branch(cpu, cpu->carryFlag); END(cpu); break;
+
+			// LDA_IZY
+			case (0xB1 << 3) | 0b001:
+			case (0xB1 << 3) | 0b010:
+			case (0xB1 << 3) | 0b011: izyAddressing(cpu); break;
+			case (0xB1 << 3) | 0b100: cpu->A = read(DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; else {nzFlags(cpu, cpu->A); END(cpu);} break;
+			case (0xB1 << 3) | 0b101: cpu->A = read(DATAPTR(cpu)); nzFlags(cpu, cpu->A); break;
+
+			// LAX_IZY
+			case (0xB3 << 3) | 0b001:
+			case (0xB3 << 3) | 0b010:
+			case (0xB3 << 3) | 0b011: izyAddressing(cpu); break;
+			case (0xB3 << 3) | 0b100: cpu->X = read(DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; else {cpu->A = cpu->X; nzFlags(cpu, cpu->X); END(cpu);} break;
+			case (0xB3 << 3) | 0b101: cpu->A = cpu->X; nzFlags(cpu, cpu->X); END(cpu); break;
+			
+			// LDY_ZPX
+			case (0xB4 << 3) | 0b001:
+			case (0xB4 << 3) | 0b010: zpiAddressing(cpu, cpu->X); break;
+			case (0xB4 << 3) | 0b011: cpu->Y = read(0x0000 | cpu->DPL); nzFlags(cpu, cpu->Y); END(cpu); break;
+
+			// LDA_ZPX
+			case (0xB5 << 3) | 0b001:
+			case (0xB5 << 3) | 0b010: zpiAddressing(cpu, cpu->X); break;
+			case (0xB5 << 3) | 0b011: cpu->A = read(0x0000 | cpu->DPL); nzFlags(cpu, cpu->A); END(cpu); break;
+
+			// LDX_ZPY
+			case (0xB6 << 3) | 0b001:
+			case (0xB6 << 3) | 0b010: zpiAddressing(cpu, cpu->Y); break;
+			case (0xB6 << 3) | 0b011: cpu->X = read(0x0000 | cpu->DPL); nzFlags(cpu, cpu->X); END(cpu); break;
+
+			// LAX_ZPY
+			case (0xB7 << 3) | 0b001:
+			case (0xB7 << 3) | 0b010: zpiAddressing(cpu, cpu->Y); break;
+			case (0xB7 << 3) | 0b011: cpu->X = read(0x0000 | cpu->DPL); cpu->A = cpu->X; nzFlags(cpu, cpu->X); END(cpu); break;
+
+			// CLV
+			case (0xB8 << 3) | 0b001: read(PROGCOUNTER(cpu)); cpu->oflowFlag = false; END(cpu); break;
+
+			// LDA_ABY
+			case (0xB9 << 3) | 0b001:
+			case (0xB9 << 3) | 0b010: absAddressing(cpu, cpu->Y); break;
+			case (0xB9 << 3) | 0b011: cpu->A = read(DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; else {nzFlags(cpu, cpu->A); END(cpu);} break;
+			case (0xB9 << 3) | 0b100: cpu->A = read(DATAPTR(cpu)); END(cpu); break;
+
+			// TSX
+			case (0xBA << 3) | 0b001: read(PROGCOUNTER(cpu)); cpu->X = cpu->SP; END(cpu); break;
+
+			// LAS_ABY
+			case (0xBB << 3) | 0b001:
+			case (0xBB << 3) | 0b010: absAddressing(cpu, cpu->Y); break;
+			case (0xBB << 3) | 0b011: cpu->B = read(DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; else {cpu->SP &= cpu->B; cpu->A = cpu->SP; cpu->X = cpu->SP; nzFlags(cpu, cpu->SP); END(cpu);} break;
+			case (0xBB << 3) | 0b100: cpu->SP &= read(DATAPTR(cpu)); cpu->A = cpu->SP; cpu->X = cpu->SP; nzFlags(cpu, cpu->SP); END(cpu); break;
+
+			// LDY_ABX
+			case (0xBC << 3) | 0b001:
+			case (0xBC << 3) | 0b010: absAddressing(cpu, cpu->X); break;
+			case (0xBC << 3) | 0b011: cpu->Y = read(DATAPTR(cpu)); if (cpu->DPL < cpu->X) cpu->DPH++; else {nzFlags(cpu, cpu->Y); END(cpu);} break;
+			case (0xBC << 3) | 0b100: cpu->Y = read(DATAPTR(cpu)); nzFlags(cpu, cpu->Y); END(cpu); break;
+
+			// LDA_ABX
+			case (0xBD << 3) | 0b001:
+			case (0xBD << 3) | 0b010: absAddressing(cpu, cpu->X); break;
+			case (0xBD << 3) | 0b011: cpu->A = read(DATAPTR(cpu)); if (cpu->DPL < cpu->X) cpu->DPH++; else {nzFlags(cpu, cpu->A); END(cpu);} break;
+			case (0xBD << 3) | 0b100: cpu->A = read(DATAPTR(cpu)); nzFlags(cpu, cpu->A); END(cpu); break;
+
+			// LDX_ABY
+			case (0xBE << 3) | 0b001:
+			case (0xBE << 3) | 0b010: absAddressing(cpu, cpu->Y); break;
+			case (0xBE << 3) | 0b011: cpu->X = read(DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; else {nzFlags(cpu, cpu->X); END(cpu);} break;
+			case (0xBE << 3) | 0b100: cpu->X = read(DATAPTR(cpu)); nzFlags(cpu, cpu->X); END(cpu); break;
+
+			// LAX_ABY
+			case (0xBF << 3) | 0b001:
+			case (0xBF << 3) | 0b010: absAddressing(cpu, cpu->Y); break;
+			case (0xBF << 3) | 0b011: cpu->X = read(DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; else {cpu->A = cpu->X; nzFlags(cpu, cpu->Y); END(cpu);} break;
+			case (0xBF << 3) | 0b100: cpu->X = read(DATAPTR(cpu)); cpu->A = cpu->X; nzFlags(cpu, cpu->X); END(cpu); break;
+
+			// CPY_IMM
+			case (0xC0 << 3) | 0b001: cpu->B = fetch(cpu); cpu->carryFlag = cpu->Y >= cpu->B; nzFlags(cpu, cpu->Y - cpu->B); END(cpu); break;
+			
+			// CMP_IZX
+			case (0xC1 << 3) | 0b001:
+			case (0xC1 << 3) | 0b010:
+			case (0xC1 << 3) | 0b011:
+			case (0xC1 << 3) | 0b100: izxAddressing(cpu); break;
+			case (0xC1 << 3) | 0b101: cpu->B = read(DATAPTR(cpu)); cpu->carryFlag = cpu->A >= cpu->B; nzFlags(cpu, cpu->A - cpu->B); END(cpu); break;
+
+			// DCP_IZX
+			// TODO sources contradict each other on which flags to set. However, the standard CMP flags seem a likely behaviour
+			case (0xC3 << 3) | 0b001:
+			case (0xC3 << 3) | 0b010:
+			case (0xC3 << 3) | 0b011:
+			case (0xC3 << 3) | 0b100: izxAddressing(cpu); break;
+			case (0xC3 << 3) | 0b101: cpu->B = read(DATAPTR(cpu)); break;
+			case (0xC3 << 3) | 0b110: write(DATAPTR(cpu), cpu->B); cpu->B--; cpu->carryFlag = cpu->A >= cpu->B; nzFlags(cpu, cpu->A - cpu->B); break;
+			case (0xC3 << 3) | 0b111: write(DATAPTR(cpu), cpu->B); END(cpu); break;
+
+			// CPY_ZP
+			case (0xC4 << 3) | 0b001: cpu->DPL = fetch(cpu); break;
+			case (0xC4 << 3) | 0b010: cpu->B = read(0x0000 | cpu->DPL); cpu->carryFlag = cpu->Y >= cpu->B; nzFlags(cpu, cpu->Y - cpu->B); END(cpu); break;
+			
+			// CMP_ZP
+			case (0xC5 << 3) | 0b001: cpu->DPL = fetch(cpu); break;
+			case (0xC5 << 3) | 0b010: cpu->B = read(0x0000 | cpu->DPL); cpu->carryFlag = cpu->A >= cpu->B; nzFlags(cpu, cpu->A - cpu->B); END(cpu); break;
+			
+			// DEC_ZP
+			case (0xC6 << 3) | 0b000: cpu->DPL = fetch(cpu); break;
+			case (0xC6 << 3) | 0b001: cpu->B = read(0x0000 | cpu->DPL); break;
+			case (0xC6 << 3) | 0b010: write(DATAPTR(cpu), cpu->B); cpu->B--; nzFlags(cpu, cpu->B); break;
+			case (0xC6 << 3) | 0b011: write(DATAPTR(cpu), cpu->B); END(cpu); break;
+
+			// DCP_ZP
+			case (0xC7 << 3) | 0b000: cpu->DPL = fetch(cpu); break;
+			case (0xC7 << 3) | 0b001: cpu->B = read(0x0000 | cpu->DPL); break;
+			case (0xC7 << 3) | 0b010: write(DATAPTR(cpu), cpu->B); cpu->B--; cpu->carryFlag = cpu->A >= cpu->B; nzFlags(cpu, cpu->A - cpu->B); break;
+			case (0xC7 << 3) | 0b011: write(DATAPTR(cpu), cpu->B); END(cpu); break;
+
+			// INY
+			case (0xC8 << 3) | 0b001: read(PROGCOUNTER(cpu)); cpu->Y++; nzFlags(cpu, cpu->Y); END(cpu); break;
+
+			// CMP_IMM
+			case (0xC9 << 3) | 0b001: cpu->B = fetch(cpu); cpu->carryFlag = cpu->A >= cpu->B; nzFlags(cpu, cpu->A - cpu->B); END(cpu); break;
+			
+			// DEX
+			case (0xCA << 3) | 0b001: read(PROGCOUNTER(cpu)); cpu->X--; nzFlags(cpu, cpu->X); END(cpu); break;
+
+			// AXS_IMM
+			case (0xCB << 3) | 0b001: cpu->B = fetch(cpu); cpu->X &= cpu->A; cpu->carryFlag = cpu->X >= cpu->B; cpu->X -= cpu->B; nzFlags(cpu, cpu->X); END(cpu); break;
+
+			// CPY_ABS
+			case (0xCC << 3) | 0b001:
+			case (0xCC << 3) | 0b010: absAddressing(cpu, 0); break;
+			case (0xCC << 3) | 0b011: cpu->B = read(DATAPTR(cpu)); cpu->carryFlag = cpu->Y >= cpu->B; nzFlags(cpu, cpu->Y - cpu->B); END(cpu); break;
+
+			// CMP_ABS
+			case (0xCD << 3) | 0b001:
+			case (0xCD << 3) | 0b010: absAddressing(cpu, 0); break;
+			case (0xCD << 3) | 0b011: cpu->B = read(DATAPTR(cpu)); cpu->carryFlag = cpu->A >= cpu->B; nzFlags(cpu, cpu->A - cpu->B); END(cpu); break;
+
+			// DEC_ABS
+			case (0xCE << 3) | 0b001:
+			case (0xCE << 3) | 0b010: absAddressing(cpu, 0); break;
+			case (0xCE << 3) | 0b011: cpu->B = read(DATAPTR(cpu)); break;
+			case (0xCE << 3) | 0b100: write(DATAPTR(cpu), cpu->B); cpu->B--; nzFlags(cpu, cpu->B); break;
+			case (0xCE << 3) | 0b101: write(DATAPTR(cpu), cpu->B); END(cpu); break;
+
+			// DCP_ABS
+			case (0xCF << 3) | 0b001:
+			case (0xCF << 3) | 0b010: absAddressing(cpu, 0); break;
+			case (0xCF << 3) | 0b011: cpu->B = read(DATAPTR(cpu)); break;
+			case (0xCF << 3) | 0b100: write(DATAPTR(cpu), cpu->B); cpu->B--; cpu->carryFlag = cpu->A >= cpu->B; nzFlags(cpu, cpu->A - cpu->B); break;
+			case (0xCF << 3) | 0b101: write(DATAPTR(cpu), cpu->B); END(cpu); break;
+
+			// BNE
+			case (0xD0 << 3) | 0b001:
+			case (0xD0 << 3) | 0b010: branch(cpu, !cpu->zeroFlag); break;
+			case (0xD0 << 3) | 0b011: branch(cpu, !cpu->zeroFlag); END(cpu); break;
+
+			// CMP_IZY
+			case (0xD1 << 3) | 0b001:
+			case (0xD1 << 3) | 0b010:
+			case (0xD1 << 3) | 0b011: izyAddressing(cpu); break;
+			case (0xD1 << 3) | 0b100: cpu->B = read(DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; else {cpu->carryFlag = cpu->A >= cpu->B; nzFlags(cpu, cpu->A - cpu->B); END(cpu);} break;
+			case (0xD1 << 3) | 0b101: cpu->B = read(DATAPTR(cpu)); cpu->carryFlag = cpu->A >= cpu->B; nzFlags(cpu, cpu->A - cpu->B); END(cpu); break;
+
+			// DCP_IZY
+			case (0xD3 << 3) | 0b001:
+			case (0xD3 << 3) | 0b010:
+			case (0xD3 << 3) | 0b011: izyAddressing(cpu); break;
+			case (0xD3 << 3) | 0b100: cpu->B = read(DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; break;
+			case (0xD3 << 3) | 0b101: cpu->B = read(DATAPTR(cpu)); break;
+			case (0xD3 << 3) | 0b110: write(DATAPTR(cpu), cpu->B); cpu->B--; cpu->carryFlag = cpu->A >= cpu->B; nzFlags(cpu, cpu->A - cpu->B); break;
+			case (0xD3 << 3) | 0b111: write(DATAPTR(cpu), cpu->B); END(cpu); break;
+
+			// CMP_ZPX
+			case (0xD5 << 3) | 0b001:
+			case (0xD5 << 3) | 0b010: zpiAddressing(cpu, cpu->X);
+			case (0xD5 << 3) | 0b011: cpu->B = read(0x0000 | cpu->DPL); cpu->carryFlag = cpu->A >= cpu->B; nzFlags(cpu, cpu->A - cpu->B); END(cpu); break;
+
+			// DEC_ZPX
+			case (0xD6 << 3) | 0b001:
+			case (0xD6 << 3) | 0b010: zpiAddressing(cpu, cpu->X);
+			case (0xD6 << 3) | 0b011: cpu->B = read(0x0000 | cpu->DPL); break;
+			case (0xD6 << 3) | 0b100: write(0x0000 | cpu->DPL, cpu->B); cpu->B--; nzFlags(cpu, cpu->B); break;
+			case (0xD6 << 3) | 0b101: write(0x0000 | cpu->DPL, cpu->B); END(cpu); break;
+
+			// DCP_ZPX
+			case (0xD7 << 3) | 0b001:
+			case (0xD7 << 3) | 0b010: zpiAddressing(cpu, cpu->X);
+			case (0xD7 << 3) | 0b011: cpu->B = read(0x0000 | cpu->DPL); break;
+			case (0xD7 << 3) | 0b100: write(0x0000 | cpu->DPL, cpu->B); cpu->B--; cpu->carryFlag = cpu->A >= cpu->B; nzFlags(cpu, cpu->A - cpu->B); break;
+			case (0xD7 << 3) | 0b101: write(0x0000 | cpu->DPL, cpu->B); END(cpu); break;
+
+			// CLD
+			case (0xD8 << 3) | 0b001: read(PROGCOUNTER(cpu)); cpu->decFlag = false; (cpu); break;
+
+			// CMP_ABY
+			case (0xD9 << 3) | 0b001:
+			case (0xD9 << 3) | 0b010: absAddressing(cpu, cpu->Y); break;
+			case (0xD9 << 3) | 0b011: cpu->B = read(DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; else {cpu->carryFlag = cpu->A >= cpu->B; nzFlags(cpu, cpu->A - cpu->B); END(cpu);} break;
+			case (0xD9 << 3) | 0b100: cpu->B = read(DATAPTR(cpu)); cpu->carryFlag = cpu->A >= cpu->B; nzFlags(cpu, cpu->A - cpu->B); END(cpu); break;
+
+			// DCP_ABY
+			case (0xDB << 3) | 0b001:
+			case (0xDB << 3) | 0b010: absAddressing(cpu, cpu->Y); break;
+			case (0xDB << 3) | 0b011: read(DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; break;
+			case (0xDB << 3) | 0b100: cpu->B = read(DATAPTR(cpu)); break;
+			case (0xDB << 3) | 0b101: write(DATAPTR(cpu), cpu->B); cpu->B--; cpu->carryFlag = cpu->A >= cpu->B; nzFlags(cpu, cpu->A - cpu->B); break;
+			case (0xDB << 3) | 0b110: write(DATAPTR(cpu), cpu->B); END(cpu); break;
+			
+			// CMP_ABX
+			case (0xDD << 3) | 0b001:
+			case (0xDD << 3) | 0b010: absAddressing(cpu, cpu->X); break;
+			case (0xDD << 3) | 0b011: cpu->B = read(DATAPTR(cpu)); if (cpu->DPL < cpu->X) cpu->DPH++; else {cpu->carryFlag = cpu->A >= cpu->B; nzFlags(cpu, cpu->A - cpu->B); END(cpu);} break;
+			case (0xDD << 3) | 0b100: cpu->B = read(DATAPTR(cpu)); cpu->carryFlag = cpu->A >= cpu->B; nzFlags(cpu, cpu->A - cpu->B); END(cpu); break;
+
+			// DEC_ABX
+			case (0xDE << 3) | 0b001:
+			case (0xDE << 3) | 0b010: absAddressing(cpu, cpu->Y); break;
+			case (0xDE << 3) | 0b011: read(DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; break;
+			case (0xDE << 3) | 0b100: cpu->B = read(DATAPTR(cpu)); break;
+			case (0xDE << 3) | 0b101: write(DATAPTR(cpu), cpu->B); cpu->B--; nzFlags(cpu, cpu->B); break;
+			case (0xDE << 3) | 0b110: write(DATAPTR(cpu), cpu->B); END(cpu); break;
+
+			// DCP_ABX
+			case (0xDF << 3) | 0b001:
+			case (0xDF << 3) | 0b010: absAddressing(cpu, cpu->X); break;
+			case (0xDF << 3) | 0b011: read(DATAPTR(cpu)); if (cpu->DPL < cpu->X) cpu->DPH++; break;
+			case (0xDF << 3) | 0b100: cpu->B = read(DATAPTR(cpu)); break;
+			case (0xDF << 3) | 0b101: write(DATAPTR(cpu), cpu->B); cpu->B--; cpu->carryFlag = cpu->A >= cpu->B; nzFlags(cpu, cpu->A - cpu->B); break;
+			case (0xDF << 3) | 0b110: write(DATAPTR(cpu), cpu->B); END(cpu); break;
+
+			// CPX_IMM
+			case (0xE0 << 3) | 0b001: cpu->B = fetch(cpu); cpu->carryFlag = cpu->X >= cpu->B; nzFlags(cpu, cpu->X - cpu->B); END(cpu); break;
+
+			// SBC_IZX
+			case (0xE1 << 3) | 0b001:
+			case (0xE1 << 3) | 0b010:
+			case (0xE1 << 3) | 0b011:
+			case (0xE1 << 3) | 0b100: izxAddressing(cpu); break;
+			case (0xE1 << 3) | 0b101: cpu->B = read(DATAPTR(cpu)); break;
+			case (0xE1 << 3) | 0b110: write(DATAPTR(cpu), cpu->B); add(cpu, ~cpu->B); break;
+			case (0xE1 << 3) | 0b111: write(DATAPTR(cpu), cpu->B); END(cpu); break;
+
+			// ISC_IZX
+			case (0xE3 << 3) | 0b001:
+			case (0xE3 << 3) | 0b010:
+			case (0xE3 << 3) | 0b011:
+			case (0xE3 << 3) | 0b100: izxAddressing(cpu); break;
+			case (0xE3 << 3) | 0b101: cpu->B = read(DATAPTR(cpu)); break;
+			case (0xE3 << 3) | 0b110: write(DATAPTR(cpu), cpu->B); cpu->B++; add(cpu, ~cpu->B); break;
+			case (0xE3 << 3) | 0b111: write(DATAPTR(cpu), cpu->B); END(cpu); break;
+
+			// CPX_ZP
+			case (0xE4 << 3) | 0b001: cpu->DPL = fetch(cpu); break;
+			case (0xE4 << 3) | 0b010: cpu->B = read(0x0000 | cpu->DPL); cpu->carryFlag = cpu->X >= cpu->B; nzFlags(cpu, cpu->X - cpu->B); END(cpu); break;
+			
+			// SBC_ZP
+			case (0xE5 << 3) | 0b001: cpu->DPL = fetch(cpu); break;
+			case (0xE5 << 3) | 0b010: add(cpu, ~(read(0x0000 | cpu->DPL))); END(cpu); break;
+
+			// INC_ZP
+			case (0xE6 << 3) | 0b000: cpu->DPL = fetch(cpu); break;
+			case (0xE6 << 3) | 0b001: cpu->B = read(0x0000 | cpu->DPL); break;
+			case (0xE6 << 3) | 0b010: write(DATAPTR(cpu), cpu->B); cpu->B++; nzFlags(cpu, cpu->B); break;
+			case (0xE6 << 3) | 0b011: write(DATAPTR(cpu), cpu->B); END(cpu); break;
+
+			// ISC_ZP
+			case (0xE7 << 3) | 0b000: cpu->DPL = fetch(cpu); break;
+			case (0xE7 << 3) | 0b001: cpu->B = read(0x0000 | cpu->DPL); break;
+			case (0xE7 << 3) | 0b010: write(DATAPTR(cpu), cpu->B); cpu->B++; add(cpu, ~cpu->B); break;
+			case (0xE7 << 3) | 0b011: write(DATAPTR(cpu), cpu->B); END(cpu); break;
+
+			// INX
+			case (0xE8 << 3) | 0b001: read(PROGCOUNTER(cpu)); cpu->X++; nzFlags(cpu, cpu->X); END(cpu); break;
+
+			// SBC_IMM
+			case (0xE9 << 3) | 0b001:
+
+			case (0xEB << 3) | 0b001: add(cpu, ~(fetch(cpu))); END(cpu); break;
+
+			// CPX_ABS
+			case (0xEC << 3) | 0b001:
+			case (0xEC << 3) | 0b010: absAddressing(cpu, 0); break;
+			case (0xEC << 3) | 0b011: cpu->B = read(DATAPTR(cpu)); cpu->carryFlag = cpu->X >= cpu->B; nzFlags(cpu, cpu->X - cpu->B); END(cpu); break;
+			
+			// SBC_ABS
+			case (0xED << 3) | 0b001:
+			case (0xED << 3) | 0b010: absAddressing(cpu, 0); break;
+			case (0xED << 3) | 0b011: add(cpu, ~(read(DATAPTR(cpu)))); END(cpu); break;
+
+			// INC_ABS
+			case (0xEE << 3) | 0b001:
+			case (0xEE << 3) | 0b010: absAddressing(cpu, 0); break;
+			case (0xEE << 3) | 0b011: cpu->B = read(DATAPTR(cpu)); break;
+			case (0xEE << 3) | 0b100: write(DATAPTR(cpu), cpu->B); cpu->B++; nzFlags(cpu, cpu->B); break;
+			case (0xEE << 3) | 0b101: write(DATAPTR(cpu), cpu->B); END(cpu); break;
+
+			// ISC_ABS
+			case (0xEF << 3) | 0b001:
+			case (0xEF << 3) | 0b010: absAddressing(cpu, 0); break;
+			case (0xEF << 3) | 0b011: cpu->B = read(DATAPTR(cpu)); break;
+			case (0xEF << 3) | 0b100: write(DATAPTR(cpu), cpu->B); cpu->B++; add(cpu, ~cpu->B); break;
+			case (0xEF << 3) | 0b101: write(DATAPTR(cpu), cpu->B); END(cpu); break;
+
+			// BEQ
+			case (0xF0 << 3) | 0b001:
+			case (0xF0 << 3) | 0b010: branch(cpu, cpu->zeroFlag); break;
+			case (0xF0 << 3) | 0b011: branch(cpu, cpu->zeroFlag); END(cpu); break;
+
+			// SBC_IZY
+			case (0xF1 << 3) | 0b001:
+			case (0xF1 << 3) | 0b010:
+			case (0xF1 << 3) | 0b011: izyAddressing(cpu); break;
+			case (0xF1 << 3) | 0b100: cpu->B = read(DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; else {add(cpu, ~cpu->B); END(cpu);} break;
+			case (0xF1 << 3) | 0b101: add(cpu, ~(read(DATAPTR(cpu)))); END(cpu); break;
+
+			// ISC_IZY
+			case (0xF3 << 3) | 0b001:
+			case (0xF3 << 3) | 0b010:
+			case (0xF3 << 3) | 0b011: izyAddressing(cpu); break;
+			case (0xF3 << 3) | 0b100: cpu->B = read(DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; break;
+			case (0xF3 << 3) | 0b101: cpu->B = read(DATAPTR(cpu)); break;
+			case (0xF3 << 3) | 0b110: write(DATAPTR(cpu), cpu->B); cpu->B++; add(cpu, ~cpu->B); break;
+			case (0xF3 << 3) | 0b111: write(DATAPTR(cpu), cpu->B); END(cpu); break;
+			
+			// SBC_ZPX
+			case (0xF5 << 3) | 0b001:
+			case (0xF5 << 3) | 0b010: zpiAddressing(cpu, cpu->X); break;
+			case (0xF5 << 3) | 0b011: add(cpu, ~(read(0x0000 | cpu->DPL))); END(cpu); break;
+
+			// INC_ZPX
+			case (0xF6 << 3) | 0b001:
+			case (0xF6 << 3) | 0b010: zpiAddressing(cpu, cpu->X); break;
+			case (0xF6 << 3) | 0b011: cpu->B = read(0x0000 | cpu->DPL); break;
+			case (0xF6 << 3) | 0b100: write(0x0000 | cpu->DPL, cpu->B); cpu->B++; nzFlags(cpu, cpu->B); break;
+			case (0xF6 << 3) | 0b101: write(0x0000 | cpu->DPL, cpu->B); END(cpu); break;
+
+			// ISC_ZPX
+			case (0xF7 << 3) | 0b001:
+			case (0xF7 << 3) | 0b010: zpiAddressing(cpu, cpu->X); break;
+			case (0xF7 << 3) | 0b011: cpu->B = read(0x0000 | cpu->DPL); break;
+			case (0xF7 << 3) | 0b100: write(0x0000 | cpu->DPL, cpu->B); cpu->B++; add(cpu, ~cpu->B); break;
+			case (0xF7 << 3) | 0b101: write(0x0000 | cpu->DPL, cpu->B); END(cpu); break;
+
+			// SED
+			case (0xF8 << 3) | 0b001: read(PROGCOUNTER(cpu)); cpu->decFlag = true; END(cpu); break;
+
+			// SBC_ABY
+			case (0xF9 << 3) | 0b001:
+			case (0xF9 << 3) | 0b010: absAddressing(cpu, cpu->Y); break;
+			case (0xF9 << 3) | 0b011: cpu->B = read(DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; else {add(cpu, ~cpu->B); END(cpu);} break;
+			case (0xF9 << 3) | 0b100: cpu->B = read(DATAPTR(cpu)); add(cpu, ~cpu->B); END(cpu); break;
+
+			// ISC_ABY
+			case (0xFB << 3) | 0b001:
+			case (0xFB << 3) | 0b010: absAddressing(cpu, cpu->Y); break;
+			case (0xFB << 3) | 0b011: read(DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; break;
+			case (0xFB << 3) | 0b100: cpu->B = read(DATAPTR(cpu)); break;
+			case (0xFB << 3) | 0b101: write(DATAPTR(cpu), cpu->B); cpu->B++; add(cpu, ~cpu->B); break;
+			case (0xFB << 3) | 0b110: write(DATAPTR(cpu), cpu->B); END(cpu); break;
+
+			// SBC_ABX
+			case (0xFD << 3) | 0b001:
+			case (0xFD << 3) | 0b010: absAddressing(cpu, cpu->X); break;
+			case (0xFD << 3) | 0b011: cpu->B = read(DATAPTR(cpu)); if (cpu->DPL < cpu->X) cpu->DPH++; else {add(cpu, ~cpu->B); END(cpu);} break;
+			case (0xFD << 3) | 0b100: cpu->B = read(DATAPTR(cpu)); add(cpu, ~cpu->B); END(cpu); break;
+
+			// INC_ABX
+			case (0xFE << 3) | 0b001:
+			case (0xFE << 3) | 0b010: absAddressing(cpu, cpu->X); break;
+			case (0xFE << 3) | 0b011: read(DATAPTR(cpu)); if (cpu->DPL < cpu->X) cpu->DPH++; break;
+			case (0xFE << 3) | 0b100: cpu->B = read(DATAPTR(cpu)); break;
+			case (0xFE << 3) | 0b101: write(DATAPTR(cpu), cpu->B); cpu->B++; nzFlags(cpu, cpu->B); break;
+			case (0xFE << 3) | 0b110: write(DATAPTR(cpu), cpu->B); END(cpu); break;
+
+			// ISC_ABX
+			case (0xFF << 3) | 0b001:
+			case (0xFF << 3) | 0b010: absAddressing(cpu, cpu->X); break;
+			case (0xFF << 3) | 0b011: read(DATAPTR(cpu)); if (cpu->DPL < cpu->X) cpu->DPH++; break;
+			case (0xFF << 3) | 0b100: cpu->B = read(DATAPTR(cpu)); break;
+			case (0xFF << 3) | 0b101: write(DATAPTR(cpu), cpu->B); cpu->B++; add(cpu, ~cpu->B); break;
+			case (0xFF << 3) | 0b110: write(DATAPTR(cpu), cpu->B); END(cpu); break;
 
 
 			// NOP
@@ -1053,7 +1422,7 @@ extern inline void tickCPU(CPU *cpu) {
 			case (0x54 << 3) | 0b011:
 			case (0x74 << 3) | 0b011:
 			case (0xD4 << 3) | 0b011:
-			case (0xF4 << 3) | 0b011: read(0x0000 | cpu->DPL); cpu->DPL += cpu->X; END(cpu); break;
+			case (0xF4 << 3) | 0b011: read(0x0000 | cpu->DPL); END(cpu); break;
 
 			// NOP_ABS
 			case (0x0C << 3) | 0b001:
