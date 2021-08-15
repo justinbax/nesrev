@@ -76,6 +76,12 @@ int main() {
 		return -0x06;
 	}
 
+	CPU cpu;
+	initCPU(&cpu);
+	for (int i = 0; i < 32; i++) {
+		tickCPU(&cpu);
+	}
+
 	while (!glfwWindowShouldClose(window)) {
 		// Updates every pixel's color
 		for (int i = 0; i < HEIGHT_PIXELS; i++) {
