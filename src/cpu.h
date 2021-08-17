@@ -89,7 +89,7 @@ extern inline void checkInterrupts(CPU *cpu);
 
 extern inline uint8_t read(uint16_t address) {
 	// TODO this
-	uint8_t data = 0x01;
+	uint8_t data = 0x00;
 	printf("%4X r %2X\n", address, data);
 	return data;
 }
@@ -183,8 +183,7 @@ void initCPU(CPU *cpu) {
 	cpu->A = cpu->X = cpu->Y = 0;
 	cpu->PCH = 0x00;
 	cpu->PCL = 0x00;
-	cpu->negFlag = cpu->oflowFlag = cpu->decFlag = cpu->zeroFlag = cpu->carryFlag = false;
-	cpu->noIRQFlag = true;
+	cpu->negFlag = cpu->oflowFlag = cpu->decFlag = cpu->noIRQFlag = cpu->zeroFlag = cpu->carryFlag = false;
 	cpu->SP = 0x00;
 	cpu->step = RESET_STEP;
 	cpu->IRQPin = cpu->NMIPin = HIGH;
@@ -193,8 +192,8 @@ void initCPU(CPU *cpu) {
 
 extern inline void pollInterrupts(CPU *cpu) {
 	cpu->IRQPending = !cpu->IRQPin;
-	cpu->NMIPending = (cpu->prevNMI && !cpu->NMIPin);
-	cpu->prevNMI = cpu->NMIPending;
+	if (cpu->prevNMI && !cpu->NMIPin) cpu->NMIPending = true;
+	cpu->prevNMI = cpu->NMIPin;
 }
 
 extern inline void tickCPU(CPU *cpu) {
@@ -203,17 +202,16 @@ extern inline void tickCPU(CPU *cpu) {
 	// TODO interrupts are ugly
 	// TODO replicate interrupt hijacking
 	
-	// An NMI has priority over an IRQ, but both need to be checked to clear cpu->nextIs* flags
-	if (cpu->nextIsIRQ && cpu->step == 0) {
-		cpu->IR = 0x00;
-		cpu->step = IRQ_STEP;
-		cpu->nextIsIRQ = false;
-	}
+	// An NMI has priority over an IRQ
 	if (cpu->nextIsNMI && cpu->step == 0) {
 		cpu->IR = 0x00;
 		cpu->step = NMI_STEP;
 		cpu->nextIsNMI = false;
-		
+		cpu->nextIsIRQ = false;
+	} else if (cpu->nextIsIRQ && cpu->step == 0) {
+		cpu->IR = 0x00;
+		cpu->step = IRQ_STEP;
+		cpu->nextIsIRQ = false;
 	}
 
 	if (cpu->step == 0) {
@@ -225,35 +223,37 @@ extern inline void tickCPU(CPU *cpu) {
 			case 0x00 | ((RESET_STEP + 0) << 8):
 			case 0x00 | ((RESET_STEP + 1) << 8):
 			case 0x00 | ((RESET_STEP + 2) << 8): read(0x00FF); break;
-			case 0x00 | ((RESET_STEP + 3) << 8): 
+			case 0x00 | ((RESET_STEP + 3) << 8):
 			case 0x00 | ((RESET_STEP + 4) << 8):
 			case 0x00 | ((RESET_STEP + 5) << 8): read(0x0100 | cpu->SP); cpu->SP--; break;
-			case 0x00 | ((RESET_STEP + 6) << 8): cpu->PCL = read(RESET_VECTOR); break;
+			case 0x00 | ((RESET_STEP + 6) << 8): cpu->PCL = read(RESET_VECTOR); cpu->noIRQFlag = true; break;
 			case 0x00 | ((RESET_STEP + 7) << 8): cpu->PCH = read(RESET_VECTOR + 1); END(cpu); break;
 
 			// NMI
-			case 0x00 | ((NMI_STEP + 0) << 8): read(PROGCOUNTER(cpu)); break;
-			case 0x00 | ((NMI_STEP + 1) << 8): push(cpu, cpu->PCH); break;
-			case 0x00 | ((NMI_STEP + 2) << 8): push(cpu, cpu->PCL); break;
-			case 0x00 | ((NMI_STEP + 3) << 8): push(cpu, (cpu->negFlag << 7) | (cpu->oflowFlag << 6) | 0b00100000 | (cpu->decFlag << 3) | (cpu->noIRQFlag << 2) | (cpu->zeroFlag << 1) | cpu->carryFlag); break;
-			case 0x00 | ((NMI_STEP + 4) << 8): cpu->PCL = read(NMI_VECTOR); break;
-			case 0x00 | ((NMI_STEP + 5) << 8): cpu->PCH = read(NMI_VECTOR + 1); END(cpu); break;
+			case 0x00 | ((NMI_STEP + 0) << 8):
+			case 0x00 | ((NMI_STEP + 1) << 8): read(PROGCOUNTER(cpu)); break;
+			case 0x00 | ((NMI_STEP + 2) << 8): push(cpu, cpu->PCH); break;
+			case 0x00 | ((NMI_STEP + 3) << 8): push(cpu, cpu->PCL); break;
+			case 0x00 | ((NMI_STEP + 4) << 8): push(cpu, (cpu->negFlag << 7) | (cpu->oflowFlag << 6) | 0b00100000 | (cpu->decFlag << 3) | (cpu->noIRQFlag << 2) | (cpu->zeroFlag << 1) | cpu->carryFlag); break;
+			case 0x00 | ((NMI_STEP + 5) << 8): cpu->PCL = read(NMI_VECTOR); cpu->noIRQFlag = true; break;
+			case 0x00 | ((NMI_STEP + 6) << 8): cpu->PCH = read(NMI_VECTOR + 1); cpu->NMIPending = false; END(cpu); break;
 
 
 			// IRQ
-			case 0x00 | ((IRQ_STEP + 0) << 8): read(PROGCOUNTER(cpu)); break;
-			case 0x00 | ((IRQ_STEP + 1) << 8): push(cpu, cpu->PCH); break;
-			case 0x00 | ((IRQ_STEP + 2) << 8): push(cpu, cpu->PCL); break;
-			case 0x00 | ((IRQ_STEP + 3) << 8): push(cpu, (cpu->negFlag << 7) | (cpu->oflowFlag << 6) | 0b00100000 | (cpu->decFlag << 3) | (cpu->noIRQFlag << 2) | (cpu->zeroFlag << 1) | cpu->carryFlag); break;
-			case 0x00 | ((IRQ_STEP + 4) << 8): cpu->PCL = read(IRQ_VECTOR); break;
-			case 0x00 | ((IRQ_STEP + 5) << 8): cpu->PCH = read(IRQ_VECTOR + 1); END(cpu); break;
+			case 0x00 | ((IRQ_STEP + 0) << 8):
+			case 0x00 | ((IRQ_STEP + 1) << 8): read(PROGCOUNTER(cpu)); break;
+			case 0x00 | ((IRQ_STEP + 2) << 8): push(cpu, cpu->PCH); break;
+			case 0x00 | ((IRQ_STEP + 3) << 8): push(cpu, cpu->PCL); break;
+			case 0x00 | ((IRQ_STEP + 4) << 8): push(cpu, (cpu->negFlag << 7) | (cpu->oflowFlag << 6) | 0b00100000 | (cpu->decFlag << 3) | (cpu->noIRQFlag << 2) | (cpu->zeroFlag << 1) | cpu->carryFlag); if (cpu->NMIPending) cpu->step = IRQ_STEP + 4; break;
+			case 0x00 | ((IRQ_STEP + 5) << 8): cpu->PCL = read(IRQ_VECTOR); cpu->noIRQFlag = true; break;
+			case 0x00 | ((IRQ_STEP + 6) << 8): cpu->PCH = read(IRQ_VECTOR + 1); END(cpu); break;
 
 			// BRK
-			case 0x00 | (0b001 << 8): read(PROGCOUNTER(cpu)); break;
+			case 0x00 | (0b001 << 8): fetch(cpu); break;
 			case 0x00 | (0b010 << 8): push(cpu, cpu->PCH); break;
 			case 0x00 | (0b011 << 8): push(cpu, cpu->PCL); break;
-			case 0x00 | (0b100 << 8): push(cpu, (cpu->negFlag << 7) | (cpu->oflowFlag << 6) | 0b00110000 | (cpu->decFlag << 3) | (cpu->noIRQFlag << 2) | (cpu->zeroFlag << 1) | cpu->carryFlag); break;
-			case 0x00 | (0b101 << 8): cpu->PCL = read(IRQ_VECTOR); break;
+			case 0x00 | (0b100 << 8): push(cpu, (cpu->negFlag << 7) | (cpu->oflowFlag << 6) | 0b00110000 | (cpu->decFlag << 3) | (cpu->noIRQFlag << 2) | (cpu->zeroFlag << 1) | cpu->carryFlag); if (cpu->NMIPending) cpu->step = NMI_STEP + 4; else if (cpu->IRQPending) cpu->step = IRQ_STEP + 4; break;
+			case 0x00 | (0b101 << 8): cpu->PCL = read(IRQ_VECTOR); cpu->noIRQFlag = true; break;
 			case 0x00 | (0b110 << 8): cpu->PCH = read(IRQ_VECTOR + 1); END(cpu); break;
 
 			// ORA_IZX

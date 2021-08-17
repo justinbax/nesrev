@@ -82,8 +82,8 @@ int main() {
 		tickCPU(&cpu);
 		pollInterrupts(&cpu);
 	}
-	printf("Lowering IRQ ...\n");
-	cpu.IRQPin = LOW;
+	printf("Lowering NMI ...\n");
+	cpu.NMIPin = LOW;
 	for (int i = 0; i < 32; i++) {
 		tickCPU(&cpu);
 		pollInterrupts(&cpu);
