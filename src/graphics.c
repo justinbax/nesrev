@@ -112,6 +112,7 @@ const Context setupContext(const int width, const int height) {
 	Context context;
 	context.status = false; // The success flag is only set at the end of the operation so we can safely return the context as it is if we encounter an error.
 	// Contrary to the index count, the vertex count is needed when calling glDraw* and is therefore stored in the context object.
+	// TODO deal with paths
 	context.verticesCount =  width * height * VERTEX_COUNT * VERTEX_SIZE;
 	context.idShaderProgram = initShaders("src/shaders/vertexMain.vert", "src/shaders/fragmentMain.frag");
 	if (context.idShaderProgram < 0)

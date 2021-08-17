@@ -78,8 +78,15 @@ int main() {
 
 	CPU cpu;
 	initCPU(&cpu);
+	for (int i = 0; i < 16; i++) {
+		tickCPU(&cpu);
+		pollInterrupts(&cpu);
+	}
+	printf("Lowering IRQ ...\n");
+	cpu.IRQPin = LOW;
 	for (int i = 0; i < 32; i++) {
 		tickCPU(&cpu);
+		pollInterrupts(&cpu);
 	}
 
 	while (!glfwWindowShouldClose(window)) {
