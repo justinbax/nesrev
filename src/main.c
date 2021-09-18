@@ -7,14 +7,15 @@
 
 #include "graphics.h"
 #include "cpu.h"
+#include "ppu.h"
 
 // Number of pixels on the x and y axies
 #define HEIGHT_PIXELS 240
 #define WIDTH_PIXELS 256
 
 // Initial window dimensions
-#define WINDOW_HEIGHT 1080
-#define WINDOW_WIDTH 1920
+#define WINDOW_HEIGHT HEIGHT_PIXELS * 4
+#define WINDOW_WIDTH WIDTH_PIXELS * 4
 
 void callbackErrorGL(GLenum source, GLenum type, GLenum id, GLenum severity, GLsizei length, const GLchar *message, const void *userParam) {
 	if (type == GL_DEBUG_TYPE_ERROR)
@@ -76,29 +77,21 @@ int main() {
 		return -0x06;
 	}
 
-	CPU cpu;
-	initCPU(&cpu);
-	for (int i = 0; i < 16; i++) {
-		tickCPU(&cpu);
-		pollInterrupts(&cpu);
+	PPU ppu;
+	initPPU(&ppu, colors);
+
+	uint8_t palette[192];
+	for (int i = 0; i < 64; i++) {
+		for (int j = 0; j < 3; j++) palette[i * 3 + j] = 4 * i;
 	}
-	printf("Lowering NMI ...\n");
-	cpu.NMIPin = LOW;
-	for (int i = 0; i < 32; i++) {
-		tickCPU(&cpu);
-		pollInterrupts(&cpu);
+	loadPalette(&ppu, palette);
+	ppu.registers[PPUMASK] |= 0b00011110;
+
+	for (int i = 0; i < 89342; i++) {
+		tickPPU(&ppu);
 	}
 
 	while (!glfwWindowShouldClose(window)) {
-		// Updates every pixel's color
-		for (int i = 0; i < HEIGHT_PIXELS; i++) {
-			for (int j = 0; j < WIDTH_PIXELS; j++) {
-				colors[3 * (WIDTH_PIXELS * i + j) + 0] = i;
-				colors[3 * (WIDTH_PIXELS * i + j) + 1] = j;
-				colors[3 * (WIDTH_PIXELS * i + j) + 2] = 0.0f;
-			}
-		}
-
 		draw(context, WIDTH_PIXELS, HEIGHT_PIXELS, colors);
 
 		glfwSwapBuffers(window);

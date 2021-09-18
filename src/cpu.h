@@ -182,7 +182,7 @@ void initCPU(CPU *cpu) {
 	// Note: this is the status of the CPU BEFORE the reset sequence
 	cpu->A = cpu->X = cpu->Y = 0;
 	cpu->PCH = 0x00;
-	cpu->PCL = 0x00;
+	cpu->PCL = 0xFF;
 	cpu->negFlag = cpu->oflowFlag = cpu->decFlag = cpu->noIRQFlag = cpu->zeroFlag = cpu->carryFlag = false;
 	cpu->SP = 0x00;
 	cpu->step = RESET_STEP;
@@ -200,7 +200,6 @@ extern inline void tickCPU(CPU *cpu) {
 	// TODO none of this is tested
 	// TODO optimize
 	// TODO interrupts are ugly
-	// TODO replicate interrupt hijacking
 	
 	// An NMI has priority over an IRQ
 	if (cpu->nextIsNMI && cpu->step == 0) {
@@ -221,13 +220,12 @@ extern inline void tickCPU(CPU *cpu) {
 			// Because the micro-instruction step counter will never exceed 3 bits in width, all cases setting a bit 3-7 will never occur during execution and can be used for other micro-instructions, such as interrupt sequences
 			// RESET
 			case 0x00 | ((RESET_STEP + 0) << 8):
-			case 0x00 | ((RESET_STEP + 1) << 8):
-			case 0x00 | ((RESET_STEP + 2) << 8): read(0x00FF); break;
+			case 0x00 | ((RESET_STEP + 1) << 8): read(PROGCOUNTER(cpu)); break;
+			case 0x00 | ((RESET_STEP + 2) << 8):
 			case 0x00 | ((RESET_STEP + 3) << 8):
-			case 0x00 | ((RESET_STEP + 4) << 8):
-			case 0x00 | ((RESET_STEP + 5) << 8): read(0x0100 | cpu->SP); cpu->SP--; break;
-			case 0x00 | ((RESET_STEP + 6) << 8): cpu->PCL = read(RESET_VECTOR); cpu->noIRQFlag = true; break;
-			case 0x00 | ((RESET_STEP + 7) << 8): cpu->PCH = read(RESET_VECTOR + 1); END(cpu); break;
+			case 0x00 | ((RESET_STEP + 4) << 8): read(0x0100 | cpu->SP); cpu->SP--; break;
+			case 0x00 | ((RESET_STEP + 5) << 8): cpu->PCL = read(RESET_VECTOR); cpu->noIRQFlag = true; break;
+			case 0x00 | ((RESET_STEP + 6) << 8): cpu->PCH = read(RESET_VECTOR + 1); END(cpu); break;
 
 			// NMI
 			case 0x00 | ((NMI_STEP + 0) << 8):
@@ -237,7 +235,6 @@ extern inline void tickCPU(CPU *cpu) {
 			case 0x00 | ((NMI_STEP + 4) << 8): push(cpu, (cpu->negFlag << 7) | (cpu->oflowFlag << 6) | 0b00100000 | (cpu->decFlag << 3) | (cpu->noIRQFlag << 2) | (cpu->zeroFlag << 1) | cpu->carryFlag); break;
 			case 0x00 | ((NMI_STEP + 5) << 8): cpu->PCL = read(NMI_VECTOR); cpu->noIRQFlag = true; break;
 			case 0x00 | ((NMI_STEP + 6) << 8): cpu->PCH = read(NMI_VECTOR + 1); cpu->NMIPending = false; END(cpu); break;
-
 
 			// IRQ
 			case 0x00 | ((IRQ_STEP + 0) << 8):

@@ -26,7 +26,7 @@ const char *readFile(const char *path) {
 	fseek(input, 0, SEEK_END);
 	long int size = ftell(input);
 	rewind(input);
-	char * buffer = malloc((size + 1) * sizeof(char));
+	char *buffer = malloc((size + 1) * sizeof(char));
 	if (buffer == NULL) {
 		fclose(input);
 		return NULL;
