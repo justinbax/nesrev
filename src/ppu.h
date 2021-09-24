@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include "mapper.h"
 
 #define PPUCTRL 0
 #define PPUMASK 1
@@ -66,11 +67,13 @@ typedef struct {
 	uint16_t pixel;
 
 	uint8_t *framebuffer;
+
+	Cartridge *cart;
 } PPU;
 
 
 // Interface functions
-void initPPU(PPU *ppu, uint8_t *framebuffer);
+void initPPU(PPU *ppu, uint8_t *framebuffer, Cartridge *cart);
 void terminatePPU(PPU *ppu);
 extern inline void tickPPU(PPU *ppu);
 extern inline uint8_t readRegisterPPU(PPU *ppu, uint8_t reg);
@@ -100,11 +103,16 @@ extern inline void renderPixel(PPU *ppu);
 // Non-interface functions
 extern inline uint8_t readAddressPPU(PPU *ppu, uint16_t address) {
 	// TODO this
-	return 0x7F;
+	if (address >= 0x3F00)
+		return ppu->palettes[address & 0x1F];
+	return cartReadPPU(ppu->cart, address);
 }
 
 extern inline void writeAddressPPU(PPU *ppu, uint16_t address, uint8_t value) {
 	// TODO this
+	if (address >= 0x3F00)
+		ppu->palettes[address & 0x1F] = value;
+	return cartWritePPU(ppu->cart, address, value);
 }
 
 extern inline void shiftRegistersPPU(PPU *ppu) {
@@ -178,7 +186,7 @@ extern inline void renderPixel(PPU *ppu) {
 
 
 // Interface functions
-void initPPU(PPU *ppu, uint8_t *framebuffer) {
+void initPPU(PPU *ppu, uint8_t *framebuffer, Cartridge *cart) {
 	// TODO seperate powerup / reset. currently, these are for powerup except for allowWrites, which is for reset for some reason
 	ppu->dataBusCPU = 0;
 	ppu->addressBusLatch = 0;
@@ -211,9 +219,10 @@ void initPPU(PPU *ppu, uint8_t *framebuffer) {
 	ppu->allowWrites = false;
 	// TODO assuming framebuffer is valid is a dangerous game. However, mallocating it ourselves would just add the need for a terminatePPU function, and would add no real benefit (the indexing would be the same because it would need to be heap-allocated anyway)
 	ppu->framebuffer = framebuffer;
+	ppu->cart = cart;
 
 	// TODO remove this and check palettes initial value
-	for (int i = 0; i < 32; i++) ppu->palettes[i] = 2 * i;
+	for (int i = 0; i < 32; i++) ppu->palettes[i] = i;
 }
 
 extern inline uint8_t readRegisterPPU(PPU *ppu, uint8_t reg) {

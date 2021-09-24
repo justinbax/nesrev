@@ -8,6 +8,7 @@
 #include "graphics.h"
 #include "cpu.h"
 #include "ppu.h"
+#include "mapper.h"
 
 // Number of pixels on the x and y axies
 #define HEIGHT_PIXELS 240
@@ -77,26 +78,57 @@ int main() {
 		return -0x06;
 	}
 
+	uint8_t *CHR = calloc(0xFFFF, sizeof(uint8_t));
+	uint8_t *PRG = calloc(0xFFFF, sizeof(uint8_t));
+
+	if (!CHR || !PRG) {
+		free(CHR);
+		free(PRG);
+		printf("Fatal error : coulnd't allocate enough memory.\n");
+		return -0x07;
+	}
+
+	CPU cpu;
 	PPU ppu;
-	initPPU(&ppu, colors);
+	Cartridge cart;
+
+	initCartridge(&cart, 0xFFFF, 0xFFFF, CHR, PRG);
+	initPPU(&ppu, colors, &cart);
+	initCPU(&cpu, &ppu);
 
 	uint8_t palette[192];
-	for (int i = 0; i < 64; i++) {
-		for (int j = 0; j < 3; j++) palette[i * 3 + j] = 4 * i;
-	}
+	for (int i = 0; i < 64; i++)
+		for (int j = 0; j < 3; j++)
+			palette[i * 3 + j] = 4 * i;
+
 	loadPalette(&ppu, palette);
 	ppu.registers[PPUMASK] |= 0b00011110;
 
-	for (int i = 0; i < 89342; i++) {
-		tickPPU(&ppu);
-	}
+	double previousTime = glfwGetTime();
+	double frameDuration = 1.0f / 2;
 
 	while (!glfwWindowShouldClose(window)) {
-		draw(context, WIDTH_PIXELS, HEIGHT_PIXELS, colors);
+		// TODO very inefficient (no CPU sleep)
+		double currentTime = glfwGetTime();
+		if (currentTime > previousTime + frameDuration) {
+			previousTime = currentTime;
+			for (int i = 0; i < 29780; i++) {
+				tickPPU(&ppu);
+				tickPPU(&ppu);
+				tickPPU(&ppu);
+				tickCPU(&cpu);
+			}
+			
+			draw(context, WIDTH_PIXELS, HEIGHT_PIXELS, colors);
 
-		glfwSwapBuffers(window);
+			glfwSwapBuffers(window);
+		}
+
 		glfwPollEvents();
 	}
+
+	free(CHR);
+	free(PRG);
 
 	terminateContext(context);
 	glfwTerminate();
