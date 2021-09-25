@@ -96,12 +96,10 @@ int main() {
 	initPPU(&ppu, colors, &cart);
 	initCPU(&cpu, &ppu);
 
-	uint8_t palette[192];
-	for (int i = 0; i < 64; i++)
-		for (int j = 0; j < 3; j++)
-			palette[i * 3 + j] = 4 * i;
-
+	// very dangerous, just for test purposes
+	unsigned char *palette = readFile("src/test.pal");
 	loadPalette(&ppu, palette);
+	free(palette);
 	ppu.registers[PPUMASK] |= 0b00011110;
 
 	double previousTime = glfwGetTime();

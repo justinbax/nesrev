@@ -15,29 +15,6 @@
 
 #define TEXTURE_UNIT 0 // Texture unit used to send pixel data to the fragment shader
 
-const char *readFile(const char *path) {
-	// Returns contents of text file in a stack-allocated char *. The returned pointer has to be deallocated with free by callee
-	// File is opened in binary mode to avoid problems with reading CRLF (2 chars) when getting file size but only reading LF (1 char) when calling fread
-	FILE *input = fopen(path, "rb");
-	if (input == NULL)
-		return NULL;
-
-	// Allocates enough memory
-	fseek(input, 0, SEEK_END);
-	long int size = ftell(input);
-	rewind(input);
-	char *buffer = malloc((size + 1) * sizeof(char));
-	if (buffer == NULL) {
-		fclose(input);
-		return NULL;
-	}
-
-	fread(buffer, size * sizeof(char), 1, input);
-	buffer[size] = '\0';
-	fclose(input);
-	return buffer;
-}
-
 long int createShader(const char *path, GLenum type) {
 	// Creates and compiles a shader from a file
 	unsigned int idShader = glCreateShader(type);
@@ -89,6 +66,29 @@ long int createProgram(unsigned int idVertexShader, unsigned int idFragmentShade
 
 
 // Interface functions
+const char *readFile(const char *path) {
+	// Returns contents of text file in a stack-allocated char *. The returned pointer has to be deallocated with free by callee
+	// File is opened in binary mode to avoid problems with reading CRLF (2 chars) when getting file size but only reading LF (1 char) when calling fread
+	FILE *input = fopen(path, "rb");
+	if (input == NULL)
+		return NULL;
+
+	// Allocates enough memory
+	fseek(input, 0, SEEK_END);
+	long int size = ftell(input);
+	rewind(input);
+	char *buffer = malloc((size + 1) * sizeof(char));
+	if (buffer == NULL) {
+		fclose(input);
+		return NULL;
+	}
+
+	fread(buffer, size * sizeof(char), 1, input);
+	buffer[size] = '\0';
+	fclose(input);
+	return buffer;
+}
+
 long int initShaders(const char *vertexShaderPath, const char *fragmentShaderPath) {
 	// Creates and compiles shaders into a shader program and returns it
 	// Because GLenum expands to unsigned int and we need signed ints for error handling, we use longs to cover the range of unsigned ints while keeping negative numbers.

@@ -22,6 +22,7 @@ typedef struct {
 	bool status; // Used to communicate to the callee if an operation succeeded.
 } Context;
 
+const char *readFile(const char *path);
 long int initShaders(const char *vertexShaderPath, const char *fragmentShaderPath);
 const Context setupContext(const int width, const int height);
 void draw(const Context context, const int width, const int height, const uint8_t * const colors);
