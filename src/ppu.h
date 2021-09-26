@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include "mapper.h"
 
+// Register addresses at 0x2000
 #define PPUCTRL 0
 #define PPUMASK 1
 #define PPUSTATUS 2
@@ -13,6 +14,36 @@
 #define PPUSCROLL 5
 #define PPUADDR 6
 #define PPUDATA 7
+
+// Bit selects for registers
+#define CTRL_NMI 0b10000000
+#define CTRL_SPRSIZE 0b00100000
+#define CTRL_BGPATTERN 0b00010000
+#define CTRL_SPRPATTERN 0b00001000
+#define CTRL_ADDRINC 0b00000100
+#define CTRL_NAMETABLE 0b00000011
+
+#define MASK_EMPHASIS 0b11100000
+#define MASK_RENDERSPR 0b00010000
+#define MASK_RENDERBG 0b00001000
+#define MASK_SHOWLEFTSPR 0b00000100
+#define MASK_SHOWLEFTBG 0b00000010
+#define MASK_GREYSCALE 0b00000001
+
+#define STATUS_VBLANK 0b10000000
+#define STATUS_SPR0 0b01000000
+#define STATUS_OFLOW 0b00100000
+
+#define VRAM_FINEY 0b111000000000000
+#define VRAM_XNAMETABLE 0b000010000000000
+#define VRAM_YNAMETABLE 0b000100000000000
+#define VRAM_COARSEY 0b000001111100000
+#define VRAM_COARSEX 0b000000000011111
+
+#define SPR_PALETTE 0b00000011
+#define SPR_PRIORITY 0b00100000
+#define SPR_HORSYMMETRY 0b01000000
+#define SPR_VERTSYMMETRY 0b10000000
 
 typedef struct {
 	// Registers and CPU / PPU interface
@@ -88,16 +119,17 @@ extern inline void incrementX(PPU *ppu);
 extern inline void incrementY(PPU *ppu);
 extern inline void feedShiftRegisters(PPU *ppu);
 extern inline void renderPixel(PPU *ppu);
+extern inline uint8_t flipByte(uint8_t value);
 
 
 // Undefined later
 #define PUTADDRBUS(ppu, address) ppu->addressBusLatch = address
-#define RENDERING(ppu) (ppu->registers[PPUMASK] & 0b00011000)
+#define RENDERING(ppu) (ppu->registers[PPUMASK] & (MASK_RENDERSPR | MASK_RENDERBG))
 #define NAMETABLEADDR(ppu) (0x2000 | (ppu->addressVRAM & 0x0FFF))
-#define ATTRIBUTEADDR(ppu) (0x23C0 | (ppu->addressVRAM & 0x0C00) | ((ppu->addressVRAM >> 2) & 0b111) | ((ppu->addressVRAM >> 4) & 0b111000))
-#define BGPATTERNADDR(ppu) (((ppu->registers[PPUCTRL] & 0b10000) << 8) | (ppu->bgNametableLatch << 4) | ((ppu->addressVRAM & 0x7000) >> 12))
+#define ATTRIBUTEADDR(ppu) (0x23C0 | (ppu->addressVRAM & (VRAM_XNAMETABLE | VRAM_YNAMETABLE)) | ((ppu->addressVRAM & VRAM_COARSEX) >> 2) | ((ppu->addressVRAM & 0b1110000000) >> 4))
+#define BGPATTERNADDR(ppu) (((ppu->registers[PPUCTRL] & CTRL_BGPATTERN) << 8) | (ppu->bgNametableLatch << 4) | ((ppu->addressVRAM & VRAM_FINEY) >> 12))
 // Just trust me for this one
-#define SPRPATTERNADDR(ppu) (((ppu->registers[PPUCTRL] & 0b00100000) ? ((ppu->sprPatternIndex & 0b10000) << 8) | (ppu->sprPatternIndex & 0b111111100000) | ((ppu->sprPatternIndex & 0b1000) << 1) : ((ppu->sprPatternIndex & 0b111111110000) | ((ppu->registers[PPUCTRL] & 0b00010000) << 8))) | (ppu->sprPatternIndex & 0b111))
+#define SPRPATTERNADDR(ppu) (((ppu->registers[PPUCTRL] & CTRL_SPRSIZE) ? ((ppu->sprPatternIndex & 0b10000) << 8) | (ppu->sprPatternIndex & (VRAM_XNAMETABLE | VRAM_YNAMETABLE | VRAM_COARSEY)) | ((ppu->sprPatternIndex & 0b1000) << 1) : ((ppu->sprPatternIndex & 0b111111110000) | ((ppu->registers[PPUCTRL] & CTRL_SPRPATTERN) << 9))) | (ppu->sprPatternIndex & 0b111))
 
 
 // Non-interface functions
@@ -126,19 +158,18 @@ extern inline void shiftRegistersPPU(PPU *ppu) {
 }
 
 extern inline void incrementX(PPU *ppu) {
-	if ((ppu->addressVRAM & 0b1111) == 0b1111) {
-		ppu->addressVRAM &= 0b111111111100000;
-		ppu->addressVRAM ^= 0b000010000000000;
+	if ((ppu->addressVRAM & VRAM_COARSEX) == VRAM_COARSEX) {
+		ppu->addressVRAM &= ~VRAM_COARSEX;
+		ppu->addressVRAM ^= VRAM_XNAMETABLE;
 	} else ppu->addressVRAM++;
 }
 
 extern inline void incrementY(PPU *ppu) {
-	// TODO the magic binary number wizard has arrived
-	if (ppu->addressVRAM >> 12 == 0b111) {
-		ppu->addressVRAM &= 0b000111111111111;
-		switch ((ppu->addressVRAM >> 5) & 0b11111) {
-			case 0b11101: ppu->addressVRAM ^= 0b000100000000000;
-			case 0b11111: ppu->addressVRAM &= 0b111110000011111; break;
+	if (ppu->addressVRAM & VRAM_FINEY == VRAM_FINEY) {
+		ppu->addressVRAM &= ~VRAM_FINEY;
+		switch ((ppu->addressVRAM & VRAM_COARSEY) >> 5) {
+			case 0b11101: ppu->addressVRAM ^= VRAM_YNAMETABLE;
+			case 0b11111: ppu->addressVRAM &= ~VRAM_COARSEY; break;
 			default: ppu->addressVRAM += 0b100000;
 		}
 	} else ppu->addressVRAM += 0b001000000000000;
@@ -172,29 +203,37 @@ extern inline void renderPixel(PPU *ppu) {
 	bgColor |= ((ppu->bgPaletteData[1] >> ppu->fineX) & 0b1) << 3;
 
 	// Disables rendering according to PPUMASK
-	if (!(ppu->registers[PPUMASK] & 0b00010000) || (!(ppu->registers[PPUMASK] & 0b00000100) && ppu->pixel < 8)) sprColor = 0;
-	if (!(ppu->registers[PPUMASK] & 0b00001000) || (!(ppu->registers[PPUMASK] & 0b00000010) && ppu->pixel < 8)) bgColor = 0;
+	if (!(ppu->registers[PPUMASK] & MASK_RENDERSPR) || (!(ppu->registers[PPUMASK] & MASK_SHOWLEFTSPR) && ppu->pixel < 8)) sprColor = 0;
+	if (!(ppu->registers[PPUMASK] & MASK_RENDERBG) || (!(ppu->registers[PPUMASK] & MASK_SHOWLEFTBG) && ppu->pixel < 8)) bgColor = 0;
 
 	// Checks for sprite 0 hits
 	if (ppu->sprZeroOnCurrent && outputUnit == 0 && sprColor && bgColor && ppu->pixel != 255)
-		ppu->registers[PPUSTATUS] |= 0b01000000;
+		ppu->registers[PPUSTATUS] |= STATUS_SPR0;
 
 	// TODO change color index according to addressVRAM during vblank (bg palette hack)
 	// Multiplexer : checks which pixel (background, sprite or backdrop) should be rendered on screen
 	int framebufferIndex = (ppu->scanline * 256 + ppu->pixel) * 3;
 	uint8_t paletteIndex = 0;
-	if (bgColor && (!sprColor || attributes & 0b00100000))
+	if (bgColor && (!sprColor || attributes & SPR_PRIORITY))
 		paletteIndex = bgColor;
-	else if (sprColor && (!bgColor || !(attributes & 0b00100000)))
+	else if (sprColor && (!bgColor || !(attributes & SPR_PRIORITY)))
 		paletteIndex = sprColor | 0b10000;
 
 	if ((paletteIndex & 0b11) == 0)
-		paletteIndex &= 11101111;
+		paletteIndex &= 0b11101111;
 
 	// Render with greyscale, if specified in PPUMASK
 	ppu->framebuffer[framebufferIndex] = ppu->colors[ppu->palettes[paletteIndex] & (ppu->registers[PPUMASK] & 0b1 ? 0x30 : 0x3F)][0];
 	ppu->framebuffer[framebufferIndex + 1] = ppu->colors[ppu->palettes[paletteIndex] & (ppu->registers[PPUMASK] & 0b1 ? 0x30 : 0x3F)][1];
 	ppu->framebuffer[framebufferIndex + 2] = ppu->colors[ppu->palettes[paletteIndex] & (ppu->registers[PPUMASK] & 0b1 ? 0x30 : 0x3F)][2];
+}
+
+extern inline uint8_t flipByte(uint8_t value) {
+	uint8_t result = 0;
+	for (int i = 0; i < 8; i++) {
+		result |= (value & (1 << i)) >> i << (7 - i);
+	}
+	return result;
 }
 
 
@@ -228,7 +267,7 @@ void initPPU(PPU *ppu, uint8_t *framebuffer, Cartridge *cart) {
 		ppu->sprXPos[i] = 0;
 	}
 
-	ppu->registers[PPUSTATUS] = 0b10100000;
+	ppu->registers[PPUSTATUS] = STATUS_VBLANK | STATUS_OFLOW;
 	ppu->allowRegWrites = false;
 	// TODO assuming framebuffer is valid is a dangerous game. However, mallocating it ourselves would just add the need for a terminatePPU function, and would add no real benefit (the indexing would be the same because it would need to be heap-allocated anyway)
 	ppu->framebuffer = framebuffer;
@@ -249,14 +288,14 @@ extern inline uint8_t readRegisterPPU(PPU *ppu, uint8_t reg) {
 		case PPUSTATUS:
 			ppu->dataBusCPU &= 0b00011111;
 			ppu->dataBusCPU |= (ppu->registers[PPUSTATUS] & 0b11100000);
-			ppu->registers[PPUSTATUS] &= 0b01111111;
+			ppu->registers[PPUSTATUS] &= ~STATUS_VBLANK;
 			// TODO set vbl to unasserted
 			ppu->secondWrite = false;
 			break;
 		case OAMDATA:
-			// TODO make sure reading from OAMDATA during rendering exposes internal accesses
-			// TODO inc oamaddr
-			ppu->dataBusCPU = ppu->OAM[ppu->registers[OAMADDR]];
+			if ((ppu->scanline >= 240 && ppu->scanline != 261) || !RENDERING(ppu))
+				ppu->registers[OAMDATA] = ppu->OAM[ppu->registers[OAMADDR]];
+			ppu->dataBusCPU = ppu->registers[OAMDATA];
 			break;
 		case PPUDATA:
 			// TODO see what happens during vblank
@@ -270,7 +309,7 @@ extern inline uint8_t readRegisterPPU(PPU *ppu, uint8_t reg) {
 				// ppu->readBufferVRAM = readAddressPPU(0x2000 | (ppu->registers[PPUADDR] & 0x0FFF));
 			}
 			// TODO inc is weird during rendering
-			ppu->addressVRAM += (ppu->registers[PPUCTRL] & 0b00000100 ? 32 : 1);
+			ppu->addressVRAM += (ppu->registers[PPUCTRL] & CTRL_ADDRINC ? 32 : 1);
 			break;
 	}
 	return ppu->dataBusCPU;
@@ -282,7 +321,7 @@ extern inline void writeRegisterPPU(PPU *ppu, uint8_t reg, uint8_t value) {
 		case PPUCTRL:
 			if (ppu->allowRegWrites) {
 				ppu->registers[PPUCTRL] = value;
-				ppu->tempAddressVRAM &= 0b111001111111111;
+				ppu->tempAddressVRAM &= ~(VRAM_XNAMETABLE | VRAM_YNAMETABLE);
 				ppu->tempAddressVRAM |= (value & 0b11) << 10;
 				// TODO check for vbl
 				// TODO apparently sometimes an open bus value is written
@@ -290,10 +329,8 @@ extern inline void writeRegisterPPU(PPU *ppu, uint8_t reg, uint8_t value) {
 			}
 			break;
 		case PPUMASK:
-			if (ppu->allowRegWrites) {
-				// TODO corruption when disabling rendering mid-frame
+			if (ppu->allowRegWrites)
 				ppu->registers[PPUMASK] = value;
-			}
 			break;
 		case PPUSTATUS:
 			break;
@@ -309,11 +346,11 @@ extern inline void writeRegisterPPU(PPU *ppu, uint8_t reg, uint8_t value) {
 		case PPUSCROLL:
 			if (ppu->allowRegWrites) {
 				if (!ppu->secondWrite) {
-					ppu->tempAddressVRAM &= 0b111111111100000;
+					ppu->tempAddressVRAM &= ~VRAM_COARSEX;
 					ppu->tempAddressVRAM |= value >> 3;
 					ppu->fineX = value & 0b111;
 				} else {
-					ppu->tempAddressVRAM &= 0b000110000011111;
+					ppu->tempAddressVRAM &= ~VRAM_COARSEY | ~VRAM_FINEY;
 					ppu->tempAddressVRAM |= (value & 0b11111000) << 2;
 					ppu->tempAddressVRAM |= (value & 0b111) << 12;
 				}
@@ -323,10 +360,14 @@ extern inline void writeRegisterPPU(PPU *ppu, uint8_t reg, uint8_t value) {
 		case PPUADDR:
 			if (ppu->allowRegWrites) {
 				// TODO bus conflicts etc.
-				ppu->tempAddressVRAM &= 0xFF << (ppu->secondWrite << 3);
-				ppu->tempAddressVRAM |= value << (!ppu->secondWrite << 3);
-				if (ppu->secondWrite) ppu->addressVRAM = ppu->tempAddressVRAM;
-				else ppu->tempAddressVRAM &= 0b100000000000000;
+				if (!ppu->secondWrite) {
+					ppu->tempAddressVRAM &= 0b000000011111111;
+					ppu->tempAddressVRAM |= (value & 0b00111111) << 8;
+				} else {
+					ppu->tempAddressVRAM &= 0b111111100000000;
+					ppu->tempAddressVRAM |= value;
+					ppu->addressVRAM = ppu->tempAddressVRAM;
+				}
 				ppu->secondWrite = !ppu->secondWrite;
 			}
 			break;
@@ -336,7 +377,7 @@ extern inline void writeRegisterPPU(PPU *ppu, uint8_t reg, uint8_t value) {
 			// writeAddressPPU(ppu->addressVRAM, value);
 			// TODO inc only if rendering is enabled
 			// TODO if during rendering, increment is weird
-			ppu->addressVRAM += (ppu->registers[PPUCTRL] & 0b00000100 ? 32 : 1);
+			ppu->addressVRAM += (ppu->registers[PPUCTRL] & CTRL_ADDRINC ? 32 : 1);
 			break;
 	}
 }
@@ -365,8 +406,8 @@ extern inline void tickPPU(PPU *ppu) {
 		if (ppu->pixel == 256) incrementY(ppu);
 		if ((ppu->pixel & 0b111) == 0 && (ppu->pixel <= 256 || ppu->pixel >= 328)) incrementX(ppu);
 		else if (ppu->pixel == 257) {
-			ppu->addressVRAM &= 0b111101111100000;
-			ppu->addressVRAM |= (ppu->tempAddressVRAM & 0b000010000011111);
+			ppu->addressVRAM &= ~(VRAM_COARSEX | VRAM_XNAMETABLE);
+			ppu->addressVRAM |= ppu->tempAddressVRAM & (VRAM_COARSEX | VRAM_XNAMETABLE);
 		}
 	}
 
@@ -381,7 +422,6 @@ extern inline void tickPPU(PPU *ppu) {
 			if (ppu->scanline == 0 && ppu->oddFrame) ppu->bgNametableLatch = readAddressPPU(ppu, NAMETABLEADDR(ppu));
 			else PUTADDRBUS(ppu, BGPATTERNADDR(ppu));
 
-			ppu->sprZeroOnCurrent = ppu->sprZeroOnNext;
 			ppu->spriteInRange = ppu->sprZeroOnNext = false;
 			ppu->secondOAMptr = ppu->sprCount = 0;
 		} else if (ppu->pixel <= 256) {
@@ -428,7 +468,7 @@ extern inline void tickPPU(PPU *ppu) {
 						else ppu->secondOAM[ppu->secondOAMptr]; // Dummy read for future logging
 
 						// Current sprite's Y position is in range for the next scanline
-						if (ppu->registers[OAMDATA] >= ppu->scanline && ppu->registers[OAMDATA] < ppu->scanline + (ppu->registers[PPUCTRL] & 0b00100000 ? 16 : 8)) {
+						if (ppu->registers[OAMDATA] >= ppu->scanline && ppu->registers[OAMDATA] < ppu->scanline + (ppu->registers[PPUCTRL] & CTRL_SPRSIZE ? 16 : 8)) {
 							ppu->spriteInRange = true;
 							ppu->secondOAMptr++;
 							ppu->registers[OAMADDR]++;
@@ -437,7 +477,7 @@ extern inline void tickPPU(PPU *ppu) {
 							if (ppu->pixel == 65) ppu->sprZeroOnNext = true;
 
 							// Sprite overflow occured
-							if (ppu->sprCount >= 8) ppu->registers[PPUSTATUS] |= 0b00100000;
+							if (ppu->sprCount >= 8) ppu->registers[PPUSTATUS] |= STATUS_OFLOW;
 						} else {
 							ppu->registers[OAMADDR] += 4;
 
@@ -467,7 +507,7 @@ extern inline void tickPPU(PPU *ppu) {
 				case 0b100: PUTADDRBUS(ppu, BGPATTERNADDR(ppu)); break;
 				case 0b101: ppu->bgPatternLatch[0] = readAddressPPU(ppu, BGPATTERNADDR(ppu)); break;
 				case 0b110: PUTADDRBUS(ppu, 0b1000 | BGPATTERNADDR(ppu)); break;
-				case 0b111: ppu->bgPatternLatch[1] = readAddressPPU(ppu, 0b1000 |  BGPATTERNADDR(ppu)); break;
+				case 0b111: ppu->bgPatternLatch[1] = readAddressPPU(ppu, 0b1000 | BGPATTERNADDR(ppu)); break;
 			}
 
 			// Color output
@@ -478,31 +518,63 @@ extern inline void tickPPU(PPU *ppu) {
 
 		} else if (ppu->pixel <= 320) {
 			if (ppu->pixel >= 280 && ppu->pixel < 305 && ppu->scanline == 261) {
-				ppu->addressVRAM &= 0b111101111100000;
-				ppu->addressVRAM |= ppu->tempAddressVRAM & 0b000010000011111;
+				ppu->addressVRAM &= ~(VRAM_COARSEY | VRAM_FINEY | VRAM_YNAMETABLE);
+				ppu->addressVRAM |= ppu->tempAddressVRAM & (VRAM_COARSEY | VRAM_FINEY | VRAM_YNAMETABLE);
+				ppu->sprZeroOnCurrent = ppu->sprZeroOnNext;
 			}
 
 			ppu->registers[OAMADDR] = 0;
 			// Sprite evaluation & tile fetching
-			// TODO also dummy OAM reads on cycles 0b101 to 0b111
-			// TODO pattern data is horizontally mirrored here, not when rendering
 			uint8_t currentOAM = (ppu->pixel - 1) & 0b00111111;
 			switch (currentOAM & 0b111) {
-				case 0b000: ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM]; ppu->sprPatternIndex = ppu->scanline - ppu->registers[OAMDATA]; PUTADDRBUS(ppu, NAMETABLEADDR(ppu)); if (ppu->pixel == 257) feedShiftRegisters(ppu); break;
-				case 0b001: ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM]; ppu->sprPatternIndex |= ppu->registers[OAMDATA] << 4; readAddressPPU(ppu, NAMETABLEADDR(ppu)); break;
-				case 0b010: ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM]; ppu->sprAttributes[currentOAM >> 3] = ppu->registers[OAMDATA]; if (ppu->registers[OAMDATA] & 0b10000000) ppu->sprPatternIndex = (ppu->sprPatternIndex & 0b111111110000) | ~(ppu->sprPatternIndex & 0b1111); PUTADDRBUS(ppu, ATTRIBUTEADDR(ppu)); break;
-				case 0b011: ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM]; ppu->sprXPos[currentOAM >> 3] = ppu->registers[OAMDATA]; readAddressPPU(ppu, ATTRIBUTEADDR(ppu)); break;
-				case 0b100: ppu->registers[OAMDATA] = ppu->secondOAM[(currentOAM & 0b111000) | 0b000011]; PUTADDRBUS(ppu, SPRPATTERNADDR(ppu)); break;
-				case 0b101: ppu->sprPatternLow[currentOAM >> 3] = readAddressPPU(ppu, SPRPATTERNADDR(ppu)); if (currentOAM >> 3 >= ppu->sprCount) ppu->sprPatternLow[currentOAM >> 3] = 0x00; break;
-				case 0b110: PUTADDRBUS(ppu, 0b1000 | SPRPATTERNADDR(ppu)); break;
-				case 0b111: ppu->sprPatternHigh[currentOAM >> 3] = readAddressPPU(ppu, 0b1000 | SPRPATTERNADDR(ppu)); if (currentOAM >> 3 >= ppu->sprCount) ppu->sprPatternHigh[currentOAM >> 3] = 0x00; break;
+				case 0b000:
+					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM];
+					ppu->sprPatternIndex = ppu->scanline - ppu->registers[OAMDATA];
+					PUTADDRBUS(ppu, NAMETABLEADDR(ppu));
+					if (ppu->pixel == 257) feedShiftRegisters(ppu);
+					break;
+				case 0b001:
+					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM];
+					ppu->sprPatternIndex |= ppu->registers[OAMDATA] << 4;
+					readAddressPPU(ppu, NAMETABLEADDR(ppu));
+					break;
+				case 0b010:
+					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM];
+					ppu->sprAttributes[currentOAM >> 3] = ppu->registers[OAMDATA];
+					if (ppu->registers[OAMDATA] & SPR_VERTSYMMETRY) ppu->sprPatternIndex = (ppu->sprPatternIndex & 0b111111110000) | ~(ppu->sprPatternIndex & 0b1111); // Vertical symmetry, if applicable
+					PUTADDRBUS(ppu, ATTRIBUTEADDR(ppu));
+					break;
+				case 0b011:
+					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM];
+					ppu->sprXPos[currentOAM >> 3] = ppu->registers[OAMDATA];
+					readAddressPPU(ppu, ATTRIBUTEADDR(ppu));
+					break;
+				case 0b100:
+					ppu->registers[OAMDATA] = ppu->secondOAM[(currentOAM & 0b111000) | 0b000011];
+					PUTADDRBUS(ppu, SPRPATTERNADDR(ppu));
+					break;
+				case 0b101:
+					ppu->registers[OAMDATA] = ppu->secondOAM[(currentOAM & 0b111000) | 0b000011];
+					ppu->sprPatternLow[currentOAM >> 3] = readAddressPPU(ppu, SPRPATTERNADDR(ppu));
+					if (currentOAM >> 3 >= ppu->sprCount) ppu->sprPatternLow[currentOAM >> 3] = 0x00;
+					else if (ppu->sprAttributes[currentOAM >> 3] & SPR_HORSYMMETRY) ppu->sprPatternHigh[currentOAM >> 3] = flipByte(ppu->sprPatternHigh[currentOAM >> 3]);
+					break;
+				case 0b110:
+					ppu->registers[OAMDATA] = ppu->secondOAM[(currentOAM & 0b111000) | 0b000011];
+					PUTADDRBUS(ppu, 0b1000 | SPRPATTERNADDR(ppu));
+					break;
+				case 0b111:
+					ppu->registers[OAMDATA] = ppu->secondOAM[(currentOAM & 0b111000) | 0b000011];
+					ppu->sprPatternHigh[currentOAM >> 3] = readAddressPPU(ppu, 0b1000 | SPRPATTERNADDR(ppu));
+					if (currentOAM >> 3 >= ppu->sprCount) ppu->sprPatternHigh[currentOAM >> 3] = 0x00;
+					else if (ppu->sprAttributes[currentOAM >> 3] & SPR_HORSYMMETRY) ppu->sprPatternHigh[currentOAM >> 3] = flipByte(ppu->sprPatternHigh[currentOAM >> 3]);
+					break;
 			}
 
 			shiftRegistersPPU(ppu);
 
 		} else if (ppu->pixel <= 336) {
 			// TODO this repeats pixel <= 256
-			// TODO maybe update OAMDATA only on 320 & 336
 			ppu->registers[OAMDATA] = ppu->secondOAM[0];
 
 			switch ((ppu->pixel - 1) & 0b111) {
@@ -522,13 +594,15 @@ extern inline void tickPPU(PPU *ppu) {
 			shiftRegistersPPU(ppu);
 
 		} else {
+			ppu->registers[OAMDATA] = ppu->secondOAM[0];
+
 			if (ppu->pixel & 0b1) {
 				PUTADDRBUS(ppu, NAMETABLEADDR(ppu));
 				if (ppu->pixel == 337) feedShiftRegisters(ppu);
 			} else ppu->bgNametableLatch = readAddressPPU(ppu, NAMETABLEADDR(ppu));
 		}
 	} else if (ppu->scanline == 241 && ppu->pixel == 1) {
-		ppu->registers[PPUSTATUS] |= 0b10000000;
+		ppu->registers[PPUSTATUS] |= STATUS_VBLANK;
 		// TODO assert vbl
 	}
 
