@@ -30,7 +30,7 @@ all: $(EXECUTABLE)
 debug: CCFLAGS += -O0 -g
 debug: $(EXECUTABLE)
 
-release: CCFLAGS += -O3
+release: CCFLAGS += -O2
 release: $(EXECUTABLE)
 
 $(EXECUTABLE): $(OBJFILES)

@@ -94,6 +94,9 @@ typedef struct {
 	// External latch for VRAM access
 	uint8_t addressBusLatch;
 
+	// VBL pin connected to the NMI pin of the 6502
+	bool outInterrupt;
+
 	uint16_t scanline;
 	uint16_t pixel;
 
@@ -105,10 +108,9 @@ typedef struct {
 
 // Interface functions
 void initPPU(PPU *ppu, uint8_t *framebuffer, Cartridge *cart);
-void terminatePPU(PPU *ppu);
 extern inline void tickPPU(PPU *ppu);
-extern inline uint8_t readRegisterPPU(PPU *ppu, uint8_t reg);
-extern inline void writeRegisterPPU(PPU *ppu, uint8_t reg, uint8_t value);
+extern inline uint8_t readRegisterPPU(PPU *ppu, uint16_t reg);
+extern inline void writeRegisterPPU(PPU *ppu, uint16_t reg, uint8_t value);
 void loadPalette(PPU *ppu, uint8_t values[192]);
 
 // Non-interface functions (still accessible to keep inlining)
@@ -125,6 +127,7 @@ extern inline uint8_t flipByte(uint8_t value);
 // Undefined later
 #define PUTADDRBUS(ppu, address) ppu->addressBusLatch = address
 #define RENDERING(ppu) (ppu->registers[PPUMASK] & (MASK_RENDERSPR | MASK_RENDERBG))
+#define UPDATENMI(ppu) ppu->outInterrupt = !((ppu->registers[PPUSTATUS] & STATUS_VBLANK) && (ppu->registers[PPUCTRL] & CTRL_NMI))
 #define NAMETABLEADDR(ppu) (0x2000 | (ppu->addressVRAM & 0x0FFF))
 #define ATTRIBUTEADDR(ppu) (0x23C0 | (ppu->addressVRAM & (VRAM_XNAMETABLE | VRAM_YNAMETABLE)) | ((ppu->addressVRAM & VRAM_COARSEX) >> 2) | ((ppu->addressVRAM & 0b1110000000) >> 4))
 #define BGPATTERNADDR(ppu) (((ppu->registers[PPUCTRL] & CTRL_BGPATTERN) << 8) | (ppu->bgNametableLatch << 4) | ((ppu->addressVRAM & VRAM_FINEY) >> 12))
@@ -137,7 +140,7 @@ extern inline uint8_t readAddressPPU(PPU *ppu, uint16_t address) {
 	// TODO this
 	if (address >= 0x3F00)
 		return ppu->palettes[address & 0x1F];
-	return cartReadPPU(ppu->cart, address);
+	return cartReadPPU(ppu->cart, (address & 0b11111100000000) | ppu->addressBusLatch);
 }
 
 extern inline void writeAddressPPU(PPU *ppu, uint16_t address, uint8_t value) {
@@ -145,7 +148,7 @@ extern inline void writeAddressPPU(PPU *ppu, uint16_t address, uint8_t value) {
 	if (address >= 0x3F00)
 		ppu->palettes[address & 0x1F] = value;
 	else
-		cartWritePPU(ppu->cart, address, value);
+		cartWritePPU(ppu->cart, (address & 0b11111100000000) | ppu->addressBusLatch, value);
 }
 
 extern inline void shiftRegistersPPU(PPU *ppu) {
@@ -165,7 +168,7 @@ extern inline void incrementX(PPU *ppu) {
 }
 
 extern inline void incrementY(PPU *ppu) {
-	if (ppu->addressVRAM & VRAM_FINEY == VRAM_FINEY) {
+	if ((ppu->addressVRAM & VRAM_FINEY) == VRAM_FINEY) {
 		ppu->addressVRAM &= ~VRAM_FINEY;
 		switch ((ppu->addressVRAM & VRAM_COARSEY) >> 5) {
 			case 0b11101: ppu->addressVRAM ^= VRAM_YNAMETABLE;
@@ -243,7 +246,6 @@ void initPPU(PPU *ppu, uint8_t *framebuffer, Cartridge *cart) {
 	ppu->dataBusCPU = 0;
 	ppu->addressBusLatch = 0;
 	ppu->scanline = ppu->pixel = 0;
-	// TODO set vlb to unasserted
 	// TODO do we really need OAMDATA, PPUDATA, PPUADR and PPUSCROLL as registers
 	// TODO load colors with default value
 	// TODO deal with sprXPos etc for first frame
@@ -269,6 +271,9 @@ void initPPU(PPU *ppu, uint8_t *framebuffer, Cartridge *cart) {
 
 	ppu->registers[PPUSTATUS] = STATUS_VBLANK | STATUS_OFLOW;
 	ppu->allowRegWrites = false;
+
+	UPDATENMI(ppu);
+
 	// TODO assuming framebuffer is valid is a dangerous game. However, mallocating it ourselves would just add the need for a terminatePPU function, and would add no real benefit (the indexing would be the same because it would need to be heap-allocated anyway)
 	ppu->framebuffer = framebuffer;
 	ppu->cart = cart;
@@ -277,8 +282,8 @@ void initPPU(PPU *ppu, uint8_t *framebuffer, Cartridge *cart) {
 	for (int i = 0; i < 32; i++) ppu->palettes[i] = i;
 }
 
-extern inline uint8_t readRegisterPPU(PPU *ppu, uint8_t reg) {
-	switch (reg) {
+extern inline uint8_t readRegisterPPU(PPU *ppu, uint16_t reg) {
+	switch (reg & 0b111) {
 		case PPUCTRL:
 		case PPUMASK:
 		case OAMADDR:
@@ -288,8 +293,9 @@ extern inline uint8_t readRegisterPPU(PPU *ppu, uint8_t reg) {
 		case PPUSTATUS:
 			ppu->dataBusCPU &= 0b00011111;
 			ppu->dataBusCPU |= (ppu->registers[PPUSTATUS] & 0b11100000);
+			// Clears VBlank flag and updates NMI output accordingly
 			ppu->registers[PPUSTATUS] &= ~STATUS_VBLANK;
-			// TODO set vbl to unasserted
+			UPDATENMI(ppu);
 			ppu->secondWrite = false;
 			break;
 		case OAMDATA:
@@ -298,8 +304,6 @@ extern inline uint8_t readRegisterPPU(PPU *ppu, uint8_t reg) {
 			ppu->dataBusCPU = ppu->registers[OAMDATA];
 			break;
 		case PPUDATA:
-			// TODO see what happens during vblank
-			// TODO VRAM accesses are 2 cycles ...
 			if (ppu->registers[PPUADDR] < 0x3F00) {
 				ppu->dataBusCPU = ppu->readBufferVRAM;
 				// TODO readBufferVRAM is only updated "at the PPU's earliest convenience" 
@@ -315,15 +319,16 @@ extern inline uint8_t readRegisterPPU(PPU *ppu, uint8_t reg) {
 	return ppu->dataBusCPU;
 }
 
-extern inline void writeRegisterPPU(PPU *ppu, uint8_t reg, uint8_t value) {
+extern inline void writeRegisterPPU(PPU *ppu, uint16_t reg, uint8_t value) {
 	ppu->dataBusCPU = value;
-	switch (reg) {
+	switch (reg & 0b111) {
 		case PPUCTRL:
 			if (ppu->allowRegWrites) {
 				ppu->registers[PPUCTRL] = value;
+				// Updates VRAM address and NMI output
 				ppu->tempAddressVRAM &= ~(VRAM_XNAMETABLE | VRAM_YNAMETABLE);
 				ppu->tempAddressVRAM |= (value & 0b11) << 10;
-				// TODO check for vbl
+				UPDATENMI(ppu);
 				// TODO apparently sometimes an open bus value is written
 				// TODO replicate other bugs
 			}
@@ -335,13 +340,20 @@ extern inline void writeRegisterPPU(PPU *ppu, uint8_t reg, uint8_t value) {
 		case PPUSTATUS:
 			break;
 		case OAMADDR:
-			// TODO corruption of OAM
-			// TODO inc oamaddr
+			// OAM corruption
+			for (int i = 0; i < 8; i++)
+				ppu->OAM[(reg & 0xF8) + i] = ppu->OAM[(ppu->registers[OAMDATA] & 0xF8) + i];
+				
 			ppu->registers[OAMADDR] = value;
 			break;
 		case OAMDATA:
-			// TODO this
-			// DO NOT WRITE TO REGISTER AT ALL if it's during rendering
+			if (ppu->scanline < 240 || ppu->scanline == 261)
+				// TODO according to NesDev, "it's plausible that it could bump the low bits instead depending on the current status of sprite evaluation"
+				ppu->registers[OAMADDR] += 4;
+			else {
+				ppu->OAM[ppu->registers[OAMADDR]] = value;
+				ppu->registers[OAMADDR]++;
+			}
 			break;
 		case PPUSCROLL:
 			if (ppu->allowRegWrites) {
@@ -372,12 +384,19 @@ extern inline void writeRegisterPPU(PPU *ppu, uint8_t reg, uint8_t value) {
 			}
 			break;
 		case PPUDATA:
-			// TODO this
-			// TODO VRAM accesses are 2 cycles ...
-			// writeAddressPPU(ppu->addressVRAM, value);
-			// TODO inc only if rendering is enabled
-			// TODO if during rendering, increment is weird
-			ppu->addressVRAM += (ppu->registers[PPUCTRL] & CTRL_ADDRINC ? 32 : 1);
+			if (ppu->scanline >= 240 && ppu->scanline != 261) {
+				// Outside of rendering; VRAM accesses are 2 cycles, explaining the presence of the read buffer
+				// TODO the write itself takes 2 cycles, but I'm unsure how the PPU handles this (presumably immediatly sends the low bits with /ALE, "saves" the high bits in a temporary location then, on the next cycle, sends them with /R)
+				// I can't find documentation on how the PPU handles the reads being 2 cycles, so I'll just do it in one. It's not a good solution, but at least it shouldn't have graphical implications, as this is only in VBlank.
+				PUTADDRBUS(ppu, ppu->addressVRAM);
+				writeAddressPPU(ppu, ppu->addressVRAM, value);
+				ppu->addressVRAM += (ppu->registers[PPUCTRL] & CTRL_ADDRINC) ? 32 : 1;
+			} else {
+				// During rendering; exact behaviour not yet implemented due to highly unpredictable results
+				// TODO it is believed that if this is done during a cycle that would otherwise increment X or Y, the increments won't be doubled. Also the read itself yields highly unpredictable results (/R and /W or /ALE may be asserted at the same time, and the address gets mixed up)
+				incrementX(ppu);
+				incrementY(ppu);
+			}
 			break;
 	}
 }
@@ -391,13 +410,10 @@ void loadPalette(PPU *ppu, uint8_t colors[192]) {
 }
 
 extern inline void tickPPU(PPU *ppu) {
-	// TODO sprite 0
-	// TODO don't render when ...
 	// TODO color emphasis
 	// TODO palette addressing / mirroring etc
 	// TODO when rendering starts, if OAMADDR >= 8, OAM is corrupted slightly
-	// TODO vbl
-	// TODO make oam[attribute] & 0b00011100 always 0 (unused bits USED BY EMULATOR)
+	// TODO make oam[attribute] & 0b00011100 always 0
 	// TODO words cannot describe how ugly this whole thing is
 	// TODO I have no idea how any of this works, so anyone else won't either
 
@@ -412,7 +428,6 @@ extern inline void tickPPU(PPU *ppu) {
 	}
 
 	// Visible scanlines
-	// TODO sprite eval doesn't happend on scanline == 261 and disabled rendering
 	// TODO the nested if/elses are quite a pain
 	if (ppu->scanline < 240 || ppu->scanline == 261) {
 		if (ppu->pixel == 0) {
@@ -430,27 +445,26 @@ extern inline void tickPPU(PPU *ppu) {
 				if (ppu->pixel <= 64) {
 					// Cycles 1-64 : fills the secondary OAM with 0xFF
 					if (ppu->pixel & 1) {
-						ppu->OAM[ppu->registers[OAMADDR]]; // Dummy read for future logging
+						// ppu->OAM[ppu->registers[OAMADDR]]; // Dummy read for future logging
 						ppu->registers[OAMDATA] = 0xFF;
 					}
 					else ppu->secondOAM[ppu->pixel >> 1] = ppu->registers[OAMDATA];
 				} else if ((ppu->registers[OAMADDR] == 0 && ppu->pixel > 66) || ((ppu->registers[OAMADDR] & 0b11111100) == 0 && ppu->sprCount >= 8)) {
 					// There are no more sprites to be evaluated
-					// The above if statement is to ensure this is reached if we reached the end of OAM without filling up secondOAM (in which case OAMADDR will always be 0) AND if we did fill it (in which case the sprite overflow bug occured, so OAMADDR will be anywhere between 0 and 3)
+					// The above if statement is to ensure this is reached if we reached the end of OAM without filling up secondOAM (in which case OAMADDR will always be 0) OR if we did fill it (in which case the sprite overflow bug occured, so OAMADDR will be anywhere between 0 and 3)
 					if (ppu->pixel & 1) {
 						ppu->registers[OAMDATA] = ppu->OAM[ppu->registers[OAMADDR]];
 						ppu->registers[OAMADDR] &= 0b11111100;
 						ppu->registers[OAMADDR] += 4;
-					} else
-						ppu->secondOAM[ppu->secondOAMptr]; // Dummy read for future logging
+					} // else
+						// ppu->secondOAM[ppu->secondOAMptr]; // Dummy read for future logging
 				} else {
 					// There are still sprites to be evaluated
-					// TODO ppu->secondOAMptr and ppu->currentSprite technically need to be incremented. Also there's a dummy read instead of a write.
 					// TODO maybe join spriteInRange and else together
 					if (ppu->pixel & 1) ppu->registers[OAMDATA] = ppu->OAM[ppu->registers[OAMADDR]];
 					else if (ppu->spriteInRange) {
 						if (ppu->sprCount < 8) ppu->secondOAM[ppu->secondOAMptr] = ppu->registers[OAMDATA];
-						else ppu->secondOAM[ppu->secondOAMptr]; // Dummy read for future logging
+						// else ppu->secondOAM[ppu->secondOAMptr]; // Dummy read for future logging
 
 						ppu->registers[OAMADDR]++;
 
@@ -465,7 +479,7 @@ extern inline void tickPPU(PPU *ppu) {
 						}
 					} else {
 						if (ppu->sprCount < 8) ppu->secondOAM[ppu->secondOAMptr] = ppu->registers[OAMDATA];
-						else ppu->secondOAM[ppu->secondOAMptr]; // Dummy read for future logging
+						// else ppu->secondOAM[ppu->secondOAMptr]; // Dummy read for future logging
 
 						// Current sprite's Y position is in range for the next scanline
 						if (ppu->registers[OAMDATA] >= ppu->scanline && ppu->registers[OAMDATA] < ppu->scanline + (ppu->registers[PPUCTRL] & CTRL_SPRSIZE ? 16 : 8)) {
@@ -496,7 +510,7 @@ extern inline void tickPPU(PPU *ppu) {
 					if (ppu->pixel != 1) feedShiftRegisters(ppu);
 					else if (ppu->scanline == 261) {
 						ppu->registers[PPUSTATUS] = 0;
-						// TODO set vbl to unasserted
+						UPDATENMI(ppu);
 						ppu->allowRegWrites = true;
 					}
 					PUTADDRBUS(ppu, NAMETABLEADDR(ppu));
@@ -511,7 +525,6 @@ extern inline void tickPPU(PPU *ppu) {
 			}
 
 			// Color output
-			// TODO check sprite priority when rendering is partly disabled
 			if (ppu->scanline != 261) renderPixel(ppu);
 
 			shiftRegistersPPU(ppu);
@@ -603,7 +616,7 @@ extern inline void tickPPU(PPU *ppu) {
 		}
 	} else if (ppu->scanline == 241 && ppu->pixel == 1) {
 		ppu->registers[PPUSTATUS] |= STATUS_VBLANK;
-		// TODO assert vbl
+		UPDATENMI(ppu);
 	}
 
 	ppu->pixel++;

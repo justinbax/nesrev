@@ -79,7 +79,8 @@ int main() {
 	}
 
 	uint8_t *CHR = calloc(0xFFFF, sizeof(uint8_t));
-	uint8_t *PRG = calloc(0xFFFF, sizeof(uint8_t));
+	uint8_t *PRG = malloc(0xFFFF * sizeof(uint8_t));
+	for (int i = 0; i < 0x10000; i++) PRG[i] = 0x58;
 
 	if (!CHR || !PRG) {
 		free(CHR);
@@ -97,13 +98,15 @@ int main() {
 	initCPU(&cpu, &ppu);
 
 	// very dangerous, just for test purposes
+	// unsigned and const things are just a mess
 	unsigned char *palette = readFile("src/test.pal");
 	loadPalette(&ppu, palette);
 	free(palette);
-	ppu.registers[PPUMASK] |= 0b00011110;
+	ppu.registers[PPUMASK] |= MASK_RENDERSPR | MASK_RENDERBG | MASK_SHOWLEFTSPR | MASK_SHOWLEFTBG;
+	ppu.registers[PPUCTRL] |= CTRL_NMI;
 
 	double previousTime = glfwGetTime();
-	double frameDuration = 1.0f / 2;
+	double frameDuration = 1.0f;
 
 	while (!glfwWindowShouldClose(window)) {
 		// TODO very inefficient (no CPU sleep)
@@ -111,9 +114,18 @@ int main() {
 		if (currentTime > previousTime + frameDuration) {
 			previousTime = currentTime;
 			for (int i = 0; i < 29780; i++) {
+				// TODO the CPU / PPU alignment is weird
 				tickPPU(&ppu);
 				tickPPU(&ppu);
+
+				// PHI2
+				cpu.NMIPin = ppu.outInterrupt;
+				pollInterrupts(&cpu);
+
 				tickPPU(&ppu);
+				// PHI1
+				// TODO remove this
+				cpu.noIRQFlag = false;
 				tickCPU(&cpu);
 			}
 			
