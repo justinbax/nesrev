@@ -66,6 +66,7 @@ long int createProgram(unsigned int idVertexShader, unsigned int idFragmentShade
 
 
 // Interface functions
+// TODO replace readFile with something else (ines.c)
 const char *readFile(const char *path) {
 	// Returns contents of text file in a stack-allocated char *. The returned pointer has to be deallocated with free by callee
 	// File is opened in binary mode to avoid problems with reading CRLF (2 chars) when getting file size but only reading LF (1 char) when calling fread

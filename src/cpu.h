@@ -47,7 +47,7 @@ typedef struct {
 	bool prevNMI;
 	bool nextIsNMI;
 
-	uint8_t internalRAM[0x0200];
+	uint8_t internalRAM[0x0800];
 
 	PPU *ppu;
 } CPU;
@@ -95,9 +95,9 @@ extern inline void checkInterrupts(CPU *cpu);
 extern inline uint8_t read(CPU *cpu, uint16_t address) {
 	// TODO this
 	if (address < 0x2000)
-		return cpu->internalRAM[address & 0x1FF];
+		return cpu->internalRAM[address & 0x7FF];
 	else if (address < 0x4000)
-		return readRegisterPPU(cpu->ppu, address & 7);
+		return readRegisterPPU(cpu->ppu, address);
 	else if (address < 4020)
 		return 0x00;
 	return cartReadCPU(cpu->ppu->cart, address);
@@ -106,9 +106,9 @@ extern inline uint8_t read(CPU *cpu, uint16_t address) {
 
 extern inline void write(CPU *cpu, uint16_t address, uint8_t data) {
 	if (address < 0x2000)
-		cpu->internalRAM[address & 0x1FF] = data;
+		cpu->internalRAM[address & 0x7FF] = data;
 	else if (address < 0x4000)
-		return writeRegisterPPU(cpu->ppu, address & 7, data);
+		return writeRegisterPPU(cpu->ppu, address, data);
 	else if (address < 4020)
 		return;
 	return cartWriteCPU(cpu->ppu->cart, address, data);
