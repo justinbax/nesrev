@@ -8,7 +8,7 @@
 #include "graphics.h"
 #include "cpu.h"
 #include "ppu.h"
-#include "mapper.h"
+#include "ines.h"
 
 // Number of pixels on the x and y axies
 #define HEIGHT_PIXELS 240
@@ -31,8 +31,19 @@ void callbackFrameBufferSize(GLFWwindow *window, int width, int height) {
 	glViewport(0, 0, width, height);
 }
 
-int main() {
+int main(int argc, char *argv[]) {
 	printf("NESRev v3.6\n");
+
+	if (argc != 2) {
+		printf("Usage : nesrev rom\n");
+		return -0x08;
+	}
+
+	Cartridge cart;
+	if (loadROMFromFile(&cart, argv[1]) != 0) {
+		printf("Couldn't load ROM.\n");
+		return -0x09;
+	}
 
 	// To clarify why OpenGL / GLFW / GLUT setup isn't handled by an interface function :
 	// The main function directly needs the GLFW window in order to process input and check if the main loop should continue.
@@ -78,42 +89,27 @@ int main() {
 		return -0x06;
 	}
 
-	uint8_t *CHR = calloc(0xFFFF, sizeof(uint8_t));
-	uint8_t *PRG = malloc(0xFFFF * sizeof(uint8_t));
-	for (int i = 0; i < 0x10000; i++) PRG[i] = 0x58;
-
-	if (!CHR || !PRG) {
-		free(CHR);
-		free(PRG);
-		printf("Fatal error : coulnd't allocate enough memory.\n");
-		return -0x07;
-	}
-
 	CPU cpu;
 	PPU ppu;
-	Cartridge cart;
 
-	initCartridge(&cart, 0xFFFF, 0xFFFF, CHR, PRG);
-	initPPU(&ppu, colors, &cart);
-	initCPU(&cpu, &ppu);
+	powerUpPPU(&ppu, colors, &cart);
+	initCPU(&cpu, &ppu, true);
 
 	// very dangerous, just for test purposes
 	// unsigned and const things are just a mess
 	unsigned char *palette = readFile("src/test.pal");
 	loadPalette(&ppu, palette);
 	free(palette);
-	ppu.registers[PPUMASK] |= MASK_RENDERSPR | MASK_RENDERBG | MASK_SHOWLEFTSPR | MASK_SHOWLEFTBG;
-	ppu.registers[PPUCTRL] |= CTRL_NMI;
 
 	double previousTime = glfwGetTime();
-	double frameDuration = 1.0f;
+	double frameDuration = 1.0f / 2;
 
 	while (!glfwWindowShouldClose(window)) {
 		// TODO very inefficient (no CPU sleep)
 		double currentTime = glfwGetTime();
 		if (currentTime > previousTime + frameDuration) {
 			previousTime = currentTime;
-			for (int i = 0; i < 29780; i++) {
+			for (int i = 0; i < 80000; i++) {
 				// TODO the CPU / PPU alignment is weird
 				tickPPU(&ppu);
 				tickPPU(&ppu);
@@ -124,8 +120,6 @@ int main() {
 
 				tickPPU(&ppu);
 				// PHI1
-				// TODO remove this
-				cpu.noIRQFlag = false;
 				tickCPU(&cpu);
 			}
 			
@@ -136,9 +130,6 @@ int main() {
 
 		glfwPollEvents();
 	}
-
-	free(CHR);
-	free(PRG);
 
 	terminateContext(context);
 	glfwTerminate();

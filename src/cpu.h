@@ -50,10 +50,12 @@ typedef struct {
 	uint8_t internalRAM[0x0800];
 
 	PPU *ppu;
+
+	bool debugLog;
 } CPU;
 
 // Interface functions
-void initCPU(CPU *cpu, PPU *ppu);
+void initCPU(CPU *cpu, PPU *ppu, bool debugLog);
 extern inline void pollInterrupts(CPU *cpu);
 extern inline void tickCPU(CPU *cpu);
 
@@ -92,27 +94,54 @@ extern inline void checkInterrupts(CPU *cpu);
 #define HIGH true
 #define LOW false
 
+// Used for debug log and disassebly
+const char instructions[256][8] = {
+	"BRK", "ORA_IZX", "KIL", "SLO_IZX", "NOP_ZP", "ORA_ZP", "ASL_ZP", "SLO_ZP", "PHP", "ORA_IMM", "ASL", "ANC_IMM", "NOP_ABS", "ORA_ABS", "ASL_ABS", "SLO_ABS",
+	"BPL", "ORA_IZY", "KIL", "SLO_IZY", "NOP_ZPX", "ORA_ZPX", "ASL_ZPX", "SLO_ZPX", "CLC", "ORA_ABY", "NOP", "SLO_ABY", "NOP_ABX", "ORA_ABX", "ASL_ABX", "SLO_ABX",
+	"JSR", "AND_IZX", "KIL", "RLA_IZX", "BIT_ZP", "AND_ZP", "ROL_ZP", "RLA_ZP", "PLP", "AND_IMM", "ROL", "AND_IMM", "BIT_ABS", "AND_ABS", "ROL_ABS", "RLA_ABS",
+	"BMI", "AND_IZY", "KIL", "RLA_AZY", "NOP_ZPX", "AND_ZPX", "ROL_ZPX", "RLA_ZPX", "SEC", "AND_ABY", "NOP", "RLA_ABY", "NOP_ABX", "AND_ABX", "ROL_ABX", "RLA_ABX",
+	"RTI", "EOR_IZX", "KIL", "SRE_IZX", "NOP_ZP", "EOR_ZP", "LSR_ZP", "SRE_ZP", "PHA", "EOR_IMM", "LSR", "ALR_IMM", "JMP_ABS", "EOR_ABS", "LSR_ABS", "SRE_ABS",
+	"BVC", "EOR_IZY", "KIL", "SRE_IZY", "NOP_ZPX", "EOR_ZPX", "LSR_ZPX", "SRE_ZPX", "CLI", "EOR_ABY", "NOP", "SRE_ABY", "NOP_ABX", "EOR_ABX", "LSR_ABX", "SRE_ABX",
+	"RTS", "ADC_IZX", "KIL", "RRA_IZX", "NOP_ZP", "ADC_ZP", "ROR_ZP", "RRA_ZP", "PLA", "ADC_IMM", "ROR", "ARR_IMM", "JPM_IND", "ADC_ABS", "ROR_ABS", "RRA_ABS",
+	"BVS", "ADC_IZY", "KIL", "RRA_IZY", "NOP_ZPX", "ADC_ZPX", "ROR_ZPX", "RRA_ZPX", "SEI", "ADC_ABY", "NOP", "RRA_ABY", "NOP_ABX", "ADC_ABX", "ROR_ABX", "RRA_ABX",
+	"NOP_IMM", "STA_IZX", "NOP_IMM", "SAX_IZX", "STY_ZP", "STA_ZP", "STX_ZP", "SAX_ZP", "DEY", "NOP_IMM", "TXA", "XAA_IMM", "STY_ABS", "STA_ABS", "STX_ABS", "SAX_ABS",
+	"BCC", "STA_IZY", "KIL", "AHX_IZY", "STY_ZPX", "STA_ZPX", "STX_ZPY", "SAX_ZPY", "TYA", "STA_ABY", "TXS", "TAS_ABY", "SHY_ABX", "STA_ABX", "SHX_ABY", "AHX_ABY",
+	"LDY_IMM", "LDA_IZX", "LDX_IMM", "LAX_IZX", "LDY_ZP", "LDA_ZP", "LDX_ZP", "LAX_ZP", "TAY", "LDA_IMM", "TAX", "LAX_IMM", "LDY_ABS", "LDA_ABS", "LDX_ABS", "LAX_ABS",
+	"BCS", "LDA_IZY", "KIL", "LAX_IZY", "LDY_ZPX", "LDA_ZPX", "LDX_ZPY", "LAX_ZPY", "CLV", "LDA_ABY", "TSX", "LAS_ABY", "LDY_BAX", "LDA_ABX", "LDX_ABY", "LAX_ABY",
+	"CPY_IMM", "CMP_IZX", "NOP_IMM", "DCP_IZX", "CPY_ZP", "CMP_ZP", "DEC_ZP", "DCP_ZP", "INY", "CMP_IMM", "DEX", "AXS_IMM", "CPY_ABS", "CMP_ABS", "DEC_ABS", "DCP_ABS",
+	"BNE", "CMP_IZY", "KIL", "DCP_IZY", "NOP_ZPX", "CMP_ZPX", "DEC_ZPX", "DCP_ZPX", "CLD", "CMP_ABY", "NOP", "DCP_ABY", "NOP_ABX", "CMP_ABX", "DEC_ABX", "DCP_ABX",
+	"CPX_IMM", "SBC_IZX", "NOP_IMM", "ISC_IZX", "CPX_ZP", "SBC_ZP", "INC_ZP", "ISC_ZP", "INX", "SBC_IMM", "NOP", "SBC_IMM", "CPX_ABS", "SBC_ABS", "INC_ABS", "ISC_ABS",
+	"BEQ", "SBC", "KIL", "ISC", "NOP_ZPX", "SBC_ZPX", "INC_ZPX", "ISC_ZPX", "SED", "SBC_ABY", "NOP", "ISC_ABY", "NOP_ABX", "SBC_ABX", "INC_ABX", "ISC_ABX"
+};
+
 extern inline uint8_t read(CPU *cpu, uint16_t address) {
 	// TODO this
+	uint8_t data;
 	if (address < 0x2000)
-		return cpu->internalRAM[address & 0x7FF];
+		data = cpu->internalRAM[address & 0x7FF];
 	else if (address < 0x4000)
-		return readRegisterPPU(cpu->ppu, address);
+		data = readRegisterPPU(cpu->ppu, address);
 	else if (address < 4020)
-		return 0x00;
-	return cartReadCPU(cpu->ppu->cart, address);
-	// printf("%4X r %2X\n", address, data);
+		data = 0x00;
+	else 
+		data = cartReadCPU(cpu->ppu->cart, address);
+
+	// TODO do an IF LOGGING or something
+	// TODO log at the end of tick so we can output IR and stuff
+	if (cpu->debugLog)
+		printf("%04X r %02X", address, data);
+	return data;
 }
 
 extern inline void write(CPU *cpu, uint16_t address, uint8_t data) {
 	if (address < 0x2000)
 		cpu->internalRAM[address & 0x7FF] = data;
 	else if (address < 0x4000)
-		return writeRegisterPPU(cpu->ppu, address, data);
-	else if (address < 4020)
-		return;
-	return cartWriteCPU(cpu->ppu->cart, address, data);
-	// printf("%4X W %2X\n", address, data);
+		writeRegisterPPU(cpu->ppu, address, data);
+	else if (address >= 0x4020)
+		cartWriteCPU(cpu->ppu->cart, address, data);
+	if (cpu->debugLog)
+		printf("%4X W %2X", address, data);
 	// TODO this
 }
 
@@ -195,7 +224,7 @@ extern inline void checkInterrupts(CPU *cpu) {
 
 
 // Interface functions
-void initCPU(CPU *cpu, PPU *ppu) {
+void initCPU(CPU *cpu, PPU *ppu, bool debugLog) {
 	// Note: this is the status of the CPU BEFORE the reset sequence
 	cpu->A = cpu->X = cpu->Y = 0;
 	cpu->PCH = 0x00;
@@ -210,6 +239,8 @@ void initCPU(CPU *cpu, PPU *ppu) {
 
 	for (int i = 0; i < 0x01FF; i++)
 		cpu->internalRAM[i] = 0x00;
+
+	cpu->debugLog = debugLog;
 }
 
 extern inline void pollInterrupts(CPU *cpu) {
@@ -763,15 +794,15 @@ extern inline void tickCPU(CPU *cpu) {
 			case 0x66 | (0b100 << 8): write(cpu, 0x0000 | cpu->DPL, cpu->B); checkInterrupts(cpu); END(cpu); break;
 
 			// RRA_ZP
-			case 0x67 | (0b000 << 8): cpu->DPL = fetch(cpu); break;
-			case 0x67 | (0b001 << 8): cpu->B = read(cpu, 0x0000 | cpu->DPL); break;
-			case 0x67 | (0b010 << 8): write(cpu, DATAPTR(cpu), cpu->B); if (cpu->carryFlag) {cpu->carryFlag = cpu->B & 0b00000001; cpu->B >>= 1; cpu->B |= 0b10000000;} else {cpu->carryFlag = cpu->B & 0b00000001; cpu->B >>= 1;} add(cpu, cpu->B); break;
-			case 0x67 | (0b011 << 8): write(cpu, DATAPTR(cpu), cpu->B); checkInterrupts(cpu); END(cpu); break;
+			case 0x67 | (0b001 << 8): cpu->DPL = fetch(cpu); break;
+			case 0x67 | (0b010 << 8): cpu->B = read(cpu, 0x0000 | cpu->DPL); break;
+			case 0x67 | (0b011 << 8): write(cpu, cpu->DPL, cpu->B); if (cpu->carryFlag) {cpu->carryFlag = cpu->B & 0b00000001; cpu->B >>= 1; cpu->B |= 0b10000000;} else {cpu->carryFlag = cpu->B & 0b00000001; cpu->B >>= 1;} add(cpu, cpu->B); break;
+			case 0x67 | (0b100 << 8): write(cpu, cpu->DPL, cpu->B); checkInterrupts(cpu); END(cpu); break;
 
 			// PLA
 			case 0x68 | (0b001 << 8): read(cpu, PROGCOUNTER(cpu)); break;
 			case 0x68 | (0b010 << 8): pull(cpu); break;
-			case 0x68 | (0b011 << 8): cpu->A = pull(cpu); nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu); break;
+			case 0x68 | (0b011 << 8): cpu->A = read(cpu, 0x0100 | cpu->SP); nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu); break;
 
 			// ADC_IMM
 			case 0x69 | (0b001 << 8): add(cpu, fetch(cpu)); checkInterrupts(cpu); END(cpu); break;
@@ -918,7 +949,8 @@ extern inline void tickCPU(CPU *cpu) {
 			case 0x87 | (0b010 << 8): write(cpu, 0x0000 | cpu->DPL, cpu->A & cpu->X); checkInterrupts(cpu); END(cpu); break;
 
 			// DEY
-			case 0x88 | (0b001 << 8): read(cpu, PROGCOUNTER(cpu)); cpu->Y--; nzFlags(cpu, cpu->Y); checkInterrupts(cpu); END(cpu); break;
+			case 0x88 | (0b001 << 8): read(cpu, PROGCOUNTER(cpu)); cpu->Y--; nzFlags(cpu, cpu->Y); checkInterrupts(cpu); END(cpu);
+			break;
 			
 			// TXA
 			case 0x8A | (0b001 << 8): read(cpu, PROGCOUNTER(cpu)); cpu->A = cpu->X; nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu); break;
@@ -1045,23 +1077,23 @@ extern inline void tickCPU(CPU *cpu) {
 			case 0xA3 | (0b001 << 8):
 			case 0xA3 | (0b010 << 8):
 			case 0xA3 | (0b011 << 8):
-			case 0xA3 | (0b100 << 8): izxAddressing(cpu);
+			case 0xA3 | (0b100 << 8): izxAddressing(cpu); break;
 			case 0xA3 | (0b101 << 8): cpu->X = read(cpu, DATAPTR(cpu)); cpu->A = cpu->X; nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu); break;
 
 			// LDY_ZP
-			case 0xA4 | (0b001 << 8): cpu->DPL = fetch(cpu);
+			case 0xA4 | (0b001 << 8): cpu->DPL = fetch(cpu); break;
 			case 0xA4 | (0b010 << 8): cpu->Y = read(cpu, 0x0000 | cpu->DPL); nzFlags(cpu, cpu->Y); checkInterrupts(cpu); END(cpu); break;
 
 			// LDA_ZP
-			case 0xA5 | (0b001 << 8): cpu->DPL = fetch(cpu);
+			case 0xA5 | (0b001 << 8): cpu->DPL = fetch(cpu); break;
 			case 0xA5 | (0b010 << 8): cpu->A = read(cpu, 0x0000 | cpu->DPL); nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu); break;
 
 			// LDX_ZP
-			case 0xA6 | (0b001 << 8): cpu->DPL = fetch(cpu);
+			case 0xA6 | (0b001 << 8): cpu->DPL = fetch(cpu); break;
 			case 0xA6 | (0b010 << 8): cpu->X = read(cpu, 0x0000 | cpu->DPL); nzFlags(cpu, cpu->X); checkInterrupts(cpu); END(cpu); break;
 
 			// LAX_ZP
-			case 0xA7 | (0b001 << 8): cpu->DPL = fetch(cpu);
+			case 0xA7 | (0b001 << 8): cpu->DPL = fetch(cpu); break;
 			case 0xA7 | (0b010 << 8): cpu->X = read(cpu, 0x0000 | cpu->DPL); cpu->A = cpu->X; nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu); break;
 
 			// TAY
@@ -1207,16 +1239,16 @@ extern inline void tickCPU(CPU *cpu) {
 			case 0xC5 | (0b010 << 8): cpu->B = read(cpu, 0x0000 | cpu->DPL); cpu->carryFlag = cpu->A >= cpu->B; nzFlags(cpu, cpu->A - cpu->B); checkInterrupts(cpu); END(cpu); break;
 			
 			// DEC_ZP
-			case 0xC6 | (0b000 << 8): cpu->DPL = fetch(cpu); break;
-			case 0xC6 | (0b001 << 8): cpu->B = read(cpu, 0x0000 | cpu->DPL); break;
-			case 0xC6 | (0b010 << 8): write(cpu, DATAPTR(cpu), cpu->B); cpu->B--; nzFlags(cpu, cpu->B); break;
-			case 0xC6 | (0b011 << 8): write(cpu, DATAPTR(cpu), cpu->B); checkInterrupts(cpu); END(cpu); break;
+			case 0xC6 | (0b001 << 8): cpu->DPL = fetch(cpu); break;
+			case 0xC6 | (0b010 << 8): cpu->B = read(cpu, 0x0000 | cpu->DPL); break;
+			case 0xC6 | (0b011 << 8): write(cpu, cpu->DPL, cpu->B); cpu->B--; nzFlags(cpu, cpu->B); break;
+			case 0xC6 | (0b100 << 8): write(cpu, cpu->DPL, cpu->B); checkInterrupts(cpu); END(cpu); break;
 
 			// DCP_ZP
-			case 0xC7 | (0b000 << 8): cpu->DPL = fetch(cpu); break;
-			case 0xC7 | (0b001 << 8): cpu->B = read(cpu, 0x0000 | cpu->DPL); break;
-			case 0xC7 | (0b010 << 8): write(cpu, DATAPTR(cpu), cpu->B); cpu->B--; cpu->carryFlag = cpu->A >= cpu->B; nzFlags(cpu, cpu->A - cpu->B); break;
-			case 0xC7 | (0b011 << 8): write(cpu, DATAPTR(cpu), cpu->B); checkInterrupts(cpu); END(cpu); break;
+			case 0xC7 | (0b001 << 8): cpu->DPL = fetch(cpu); break;
+			case 0xC7 | (0b010 << 8): cpu->B = read(cpu, 0x0000 | cpu->DPL); break;
+			case 0xC7 | (0b011 << 8): write(cpu, cpu->DPL, cpu->B); cpu->B--; cpu->carryFlag = cpu->A >= cpu->B; nzFlags(cpu, cpu->A - cpu->B); break;
+			case 0xC7 | (0b100 << 8): write(cpu, cpu->DPL, cpu->B); checkInterrupts(cpu); END(cpu); break;
 
 			// INY
 			case 0xC8 | (0b001 << 8): read(cpu, PROGCOUNTER(cpu)); cpu->Y++; nzFlags(cpu, cpu->Y); checkInterrupts(cpu); END(cpu); break;
@@ -1363,16 +1395,16 @@ extern inline void tickCPU(CPU *cpu) {
 			case 0xE5 | (0b010 << 8): add(cpu, ~(read(cpu, 0x0000 | cpu->DPL))); checkInterrupts(cpu); END(cpu); break;
 
 			// INC_ZP
-			case 0xE6 | (0b000 << 8): cpu->DPL = fetch(cpu); break;
-			case 0xE6 | (0b001 << 8): cpu->B = read(cpu, 0x0000 | cpu->DPL); break;
-			case 0xE6 | (0b010 << 8): write(cpu, DATAPTR(cpu), cpu->B); cpu->B++; nzFlags(cpu, cpu->B); break;
-			case 0xE6 | (0b011 << 8): write(cpu, DATAPTR(cpu), cpu->B); checkInterrupts(cpu); END(cpu); break;
+			case 0xE6 | (0b001 << 8): cpu->DPL = fetch(cpu); break;
+			case 0xE6 | (0b010 << 8): cpu->B = read(cpu, 0x0000 | cpu->DPL); break;
+			case 0xE6 | (0b011 << 8): write(cpu, cpu->DPL, cpu->B); cpu->B++; nzFlags(cpu, cpu->B); break;
+			case 0xE6 | (0b100 << 8): write(cpu, cpu->DPL, cpu->B); checkInterrupts(cpu); END(cpu); break;
 
 			// ISC_ZP
-			case 0xE7 | (0b000 << 8): cpu->DPL = fetch(cpu); break;
-			case 0xE7 | (0b001 << 8): cpu->B = read(cpu, 0x0000 | cpu->DPL); break;
-			case 0xE7 | (0b010 << 8): write(cpu, DATAPTR(cpu), cpu->B); cpu->B++; add(cpu, ~cpu->B); break;
-			case 0xE7 | (0b011 << 8): write(cpu, DATAPTR(cpu), cpu->B); checkInterrupts(cpu); END(cpu); break;
+			case 0xE7 | (0b001 << 8): cpu->DPL = fetch(cpu); break;
+			case 0xE7 | (0b010 << 8): cpu->B = read(cpu, 0x0000 | cpu->DPL); break;
+			case 0xE7 | (0b011 << 8): write(cpu, cpu->DPL, cpu->B); cpu->B++; add(cpu, ~cpu->B); break;
+			case 0xE7 | (0b100 << 8): write(cpu, cpu->DPL, cpu->B); checkInterrupts(cpu); END(cpu); break;
 
 			// INX
 			case 0xE8 | (0b001 << 8): read(cpu, PROGCOUNTER(cpu)); cpu->X++; nzFlags(cpu, cpu->X); checkInterrupts(cpu); END(cpu); break;
@@ -1560,6 +1592,26 @@ extern inline void tickCPU(CPU *cpu) {
 
 			// KIL
 			default: cpu->step--; break;
+		}
+	}
+	if (cpu->debugLog) {
+		switch (cpu->step & 0b11111000) {
+			// TODO fix RESET becoming BRK at last instruction
+			case RESET_STEP:
+				printf("  (  RESET step %i)\n", cpu->step & 0b00001111);
+				break;
+			case NMI_STEP:
+				printf("  (    NMI step %i)\n", cpu->step & 0b00001111);
+				break;
+			case IRQ_STEP:
+				printf("  (    IRQ step %i)\n", cpu->step & 0b00001111);
+				break;
+			case (uint8_t)-1 & 0b11111000:
+				printf("  (%7s step *)\n", instructions[cpu->IR]);
+				break;
+			default:
+				printf("  (%7s step %i)\n", instructions[cpu->IR], cpu->step);
+				break;
 		}
 	}
 	cpu->step++;

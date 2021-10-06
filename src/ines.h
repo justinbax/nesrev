@@ -1,7 +1,7 @@
 #ifndef INES_H
 #define INES_H
 
-#include "mapper.h"
+#include "cartridge.h"
 
 int loadROMFromFile(Cartridge *cart, const char *path);
 

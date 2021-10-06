@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include "ines.h"
 
 #define HEADER6_MIRRORING 0b00000001
@@ -58,4 +59,5 @@ int loadROMFromFile(Cartridge *cart, const char *path) {
 		fclose(input);
 		return -0x02;
 	}
+	return 0x00;
 }

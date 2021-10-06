@@ -107,7 +107,7 @@ typedef struct {
 
 
 // Interface functions
-void initPPU(PPU *ppu, uint8_t *framebuffer, Cartridge *cart);
+void powerUpPPU(PPU *ppu, uint8_t *framebuffer, Cartridge *cart);
 extern inline void tickPPU(PPU *ppu);
 extern inline uint8_t readRegisterPPU(PPU *ppu, uint16_t reg);
 extern inline void writeRegisterPPU(PPU *ppu, uint16_t reg, uint8_t value);
@@ -206,8 +206,10 @@ extern inline void renderPixel(PPU *ppu) {
 	bgColor |= ((ppu->bgPaletteData[1] >> ppu->fineX) & 0b1) << 3;
 
 	// Disables rendering according to PPUMASK
-	if (!(ppu->registers[PPUMASK] & MASK_RENDERSPR) || (!(ppu->registers[PPUMASK] & MASK_SHOWLEFTSPR) && ppu->pixel < 8)) sprColor = 0;
-	if (!(ppu->registers[PPUMASK] & MASK_RENDERBG) || (!(ppu->registers[PPUMASK] & MASK_SHOWLEFTBG) && ppu->pixel < 8)) bgColor = 0;
+	if (!(ppu->registers[PPUMASK] & MASK_RENDERSPR) || (!(ppu->registers[PPUMASK] & MASK_SHOWLEFTSPR) && ppu->pixel < 8))
+		sprColor = 0;
+	if (!(ppu->registers[PPUMASK] & MASK_RENDERBG) || (!(ppu->registers[PPUMASK] & MASK_SHOWLEFTBG) && ppu->pixel < 8))
+		bgColor = 0;
 
 	// Checks for sprite 0 hits
 	if (ppu->sprZeroOnCurrent && outputUnit == 0 && sprColor && bgColor && ppu->pixel != 255)
@@ -233,22 +235,22 @@ extern inline void renderPixel(PPU *ppu) {
 
 extern inline uint8_t flipByte(uint8_t value) {
 	uint8_t result = 0;
-	for (int i = 0; i < 8; i++) {
+	for (int i = 0; i < 8; i++)
 		result |= (value & (1 << i)) >> i << (7 - i);
-	}
+
 	return result;
 }
 
 
 // Interface functions
-void initPPU(PPU *ppu, uint8_t *framebuffer, Cartridge *cart) {
-	// TODO seperate powerup / reset. currently, these are for powerup except for allowRegWrites, which is for reset for some reason
+void powerUpPPU(PPU *ppu, uint8_t *framebuffer, Cartridge *cart) {
+	// This emulates the PPU behaviour when it is first powered up after being off for some time. This is NOT perfectly good emulation for its behaviour on reset or on bootup when the NES was just recently turned off.
+	// The main differences between power and reset are various registers working immediately and their content 
 	ppu->dataBusCPU = 0;
 	ppu->addressBusLatch = 0;
 	ppu->scanline = ppu->pixel = 0;
 	// TODO do we really need OAMDATA, PPUDATA, PPUADR and PPUSCROLL as registers
 	// TODO load colors with default value
-	// TODO deal with sprXPos etc for first frame
 	ppu->secondOAMptr = ppu->sprCount = ppu->sprPatternIndex = 0;
 	ppu->addressVRAM = ppu->tempAddressVRAM = ppu->readBufferVRAM = ppu->fineX = 0;
 	ppu->spriteInRange = ppu->sprZeroOnNext = ppu->sprZeroOnCurrent = ppu->secondWrite = ppu->oddFrame = false;
@@ -269,8 +271,7 @@ void initPPU(PPU *ppu, uint8_t *framebuffer, Cartridge *cart) {
 		ppu->sprXPos[i] = 0;
 	}
 
-	ppu->registers[PPUSTATUS] = STATUS_VBLANK | STATUS_OFLOW;
-	ppu->allowRegWrites = false;
+	ppu->allowRegWrites = true;
 
 	UPDATENMI(ppu);
 
@@ -402,11 +403,9 @@ extern inline void writeRegisterPPU(PPU *ppu, uint16_t reg, uint8_t value) {
 }
 
 void loadPalette(PPU *ppu, uint8_t colors[192]) {
-	for (int i = 0; i < 64; i++) {
-		for (int j = 0; j < 3; j++) {
+	for (int i = 0; i < 64; i++)
+		for (int j = 0; j < 3; j++)
 			ppu->colors[i][j] = colors[i * 3 + j];
-		}
-	}
 }
 
 extern inline void tickPPU(PPU *ppu) {
@@ -419,8 +418,10 @@ extern inline void tickPPU(PPU *ppu) {
 
 	// Scanline-independant logic
 	if (RENDERING(ppu)) {
-		if (ppu->pixel == 256) incrementY(ppu);
-		if ((ppu->pixel & 0b111) == 0 && (ppu->pixel <= 256 || ppu->pixel >= 328)) incrementX(ppu);
+		if (ppu->pixel == 256)
+			incrementY(ppu);
+		if ((ppu->pixel & 0b111) == 0 && (ppu->pixel <= 256 || ppu->pixel >= 328) && ppu->pixel != 0)
+			incrementX(ppu);
 		else if (ppu->pixel == 257) {
 			ppu->addressVRAM &= ~(VRAM_COARSEX | VRAM_XNAMETABLE);
 			ppu->addressVRAM |= ppu->tempAddressVRAM & (VRAM_COARSEX | VRAM_XNAMETABLE);
@@ -434,8 +435,10 @@ extern inline void tickPPU(PPU *ppu) {
 			if (ppu->scanline == 261) ppu->oddFrame = !ppu->oddFrame;
 			else renderPixel(ppu);
 
-			if (ppu->scanline == 0 && ppu->oddFrame) ppu->bgNametableLatch = readAddressPPU(ppu, NAMETABLEADDR(ppu));
-			else PUTADDRBUS(ppu, BGPATTERNADDR(ppu));
+			if (ppu->scanline == 0 && ppu->oddFrame) 
+				ppu->bgNametableLatch = readAddressPPU(ppu, NAMETABLEADDR(ppu));
+			else
+				PUTADDRBUS(ppu, BGPATTERNADDR(ppu));
 
 			ppu->spriteInRange = ppu->sprZeroOnNext = false;
 			ppu->secondOAMptr = ppu->sprCount = 0;
@@ -470,6 +473,7 @@ extern inline void tickPPU(PPU *ppu) {
 
 						// The last byte of entry was copied
 						if ((ppu->secondOAMptr++ & 0b11) == 0) {
+							// TODO this is never reached ?
 							ppu->spriteInRange = false;
 							ppu->sprCount++;
 
@@ -507,7 +511,8 @@ extern inline void tickPPU(PPU *ppu) {
 			// Tile fetching
 			switch ((ppu->pixel - 1) & 0b111) {
 				case 0b000:
-					if (ppu->pixel != 1) feedShiftRegisters(ppu);
+					if (ppu->pixel != 1)
+						feedShiftRegisters(ppu);
 					else if (ppu->scanline == 261) {
 						ppu->registers[PPUSTATUS] = 0;
 						UPDATENMI(ppu);
@@ -544,7 +549,8 @@ extern inline void tickPPU(PPU *ppu) {
 					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM];
 					ppu->sprPatternIndex = ppu->scanline - ppu->registers[OAMDATA];
 					PUTADDRBUS(ppu, NAMETABLEADDR(ppu));
-					if (ppu->pixel == 257) feedShiftRegisters(ppu);
+					if (ppu->pixel == 257)
+						feedShiftRegisters(ppu);
 					break;
 				case 0b001:
 					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM];
@@ -554,7 +560,8 @@ extern inline void tickPPU(PPU *ppu) {
 				case 0b010:
 					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM];
 					ppu->sprAttributes[currentOAM >> 3] = ppu->registers[OAMDATA];
-					if (ppu->registers[OAMDATA] & SPR_VERTSYMMETRY) ppu->sprPatternIndex = (ppu->sprPatternIndex & 0b111111110000) | ~(ppu->sprPatternIndex & 0b1111); // Vertical symmetry, if applicable
+					if (ppu->registers[OAMDATA] & SPR_VERTSYMMETRY)
+						ppu->sprPatternIndex = (ppu->sprPatternIndex & 0b111111110000) | ~(ppu->sprPatternIndex & 0b1111); // Vertical symmetry, if applicable
 					PUTADDRBUS(ppu, ATTRIBUTEADDR(ppu));
 					break;
 				case 0b011:
@@ -569,8 +576,10 @@ extern inline void tickPPU(PPU *ppu) {
 				case 0b101:
 					ppu->registers[OAMDATA] = ppu->secondOAM[(currentOAM & 0b111000) | 0b000011];
 					ppu->sprPatternLow[currentOAM >> 3] = readAddressPPU(ppu, SPRPATTERNADDR(ppu));
-					if (currentOAM >> 3 >= ppu->sprCount) ppu->sprPatternLow[currentOAM >> 3] = 0x00;
-					else if (ppu->sprAttributes[currentOAM >> 3] & SPR_HORSYMMETRY) ppu->sprPatternHigh[currentOAM >> 3] = flipByte(ppu->sprPatternHigh[currentOAM >> 3]);
+					if (currentOAM >> 3 >= ppu->sprCount)
+						ppu->sprPatternLow[currentOAM >> 3] = 0x00;
+					else if (ppu->sprAttributes[currentOAM >> 3] & SPR_HORSYMMETRY)
+						ppu->sprPatternHigh[currentOAM >> 3] = flipByte(ppu->sprPatternHigh[currentOAM >> 3]);
 					break;
 				case 0b110:
 					ppu->registers[OAMDATA] = ppu->secondOAM[(currentOAM & 0b111000) | 0b000011];
@@ -579,8 +588,10 @@ extern inline void tickPPU(PPU *ppu) {
 				case 0b111:
 					ppu->registers[OAMDATA] = ppu->secondOAM[(currentOAM & 0b111000) | 0b000011];
 					ppu->sprPatternHigh[currentOAM >> 3] = readAddressPPU(ppu, 0b1000 | SPRPATTERNADDR(ppu));
-					if (currentOAM >> 3 >= ppu->sprCount) ppu->sprPatternHigh[currentOAM >> 3] = 0x00;
-					else if (ppu->sprAttributes[currentOAM >> 3] & SPR_HORSYMMETRY) ppu->sprPatternHigh[currentOAM >> 3] = flipByte(ppu->sprPatternHigh[currentOAM >> 3]);
+					if (currentOAM >> 3 >= ppu->sprCount)
+						ppu->sprPatternHigh[currentOAM >> 3] = 0x00;
+					else if (ppu->sprAttributes[currentOAM >> 3] & SPR_HORSYMMETRY)
+						ppu->sprPatternHigh[currentOAM >> 3] = flipByte(ppu->sprPatternHigh[currentOAM >> 3]);
 					break;
 			}
 
