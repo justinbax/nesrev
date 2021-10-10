@@ -41,7 +41,7 @@ int main(int argc, char *argv[]) {
 
 	Cartridge cart;
 	if (loadROMFromFile(&cart, argv[1]) != 0) {
-		printf("Couldn't load ROM.\n");
+		printf("Fatal error : couldn't load ROM.\n");
 		return -0x09;
 	}
 
@@ -78,7 +78,7 @@ int main(int argc, char *argv[]) {
 
 	const Context context = setupContext(WIDTH_PIXELS, HEIGHT_PIXELS);
 	if (context.status == false) {
-		printf("Fatal error : couldn't set up communication with the shaders.\n");
+		printf("Fatal error : couldn't set up shader communication with GPU.\n");
 		return -0x05;
 	}
 
@@ -93,16 +93,16 @@ int main(int argc, char *argv[]) {
 	PPU ppu;
 
 	powerUpPPU(&ppu, colors, &cart);
-	initCPU(&cpu, &ppu, true);
+	initCPU(&cpu, &ppu, false);
 
-	// very dangerous, just for test purposes
-	// unsigned and const things are just a mess
+	// TODO very dangerous, just for test purposes
+	// TODO unsigned and const things are just a mess
 	unsigned char *palette = readFile("src/test.pal");
 	loadPalette(&ppu, palette);
 	free(palette);
 
 	double previousTime = glfwGetTime();
-	double frameDuration = 1.0f / 2;
+	double frameDuration = 1.0f / 10;
 
 	while (!glfwWindowShouldClose(window)) {
 		// TODO very inefficient (no CPU sleep)

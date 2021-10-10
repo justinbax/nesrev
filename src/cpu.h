@@ -13,18 +13,20 @@ typedef struct {
 	uint8_t IR; // Instruction register
 	uint8_t step; // Micro-instruction step counter to keep track of the current step inside an instruction
 
-	// I am unaware of the specific usage (and even existence!) of these registers, as they are very rarely documented
-	// However, to achieve cycle accuracy, they are needed in emulation
+	// I am unaware of the specific usage (and even existence!) of these registers on a physical 6502, as they are very rarely documented.
+	// However, to achieve cycle accuracy, they are needed in emulation to retain information across cycles.
 	// Fortunately, this has no effect whatsoever on the output of the NES, as none of them change the timing of read/writes.
+	// In this emulator, DPL and DPH are used as a general 16-bit register for simple addressing modes. Meanwhile, temp is mostly used with DP in indirect addressing, jumps, branches and obscure illegal instructions.
 	uint8_t DPL; // Low byte of data pointer register used in address calculation
 	uint8_t DPH; // High byte of data pointer register used in address calculation
 	uint8_t temp; // Temporary register used during indirect addressing modes
 
+	// General purpose register
 	uint8_t A;
 	uint8_t X;
 	uint8_t Y;
 
-	// With A, this is the second ALU register, not accessible by the user but used to perform arithmetic and logical operations on memory data during read-modify-write instructions
+	// With A, this is the second ALU register, not accessible by the user but used to perform arithmetic and logical operations on memory data during read-modify-write instructions.
 	// Like DPL, DPH and temp, this register isn't used when it doesn't need to be (emulation-wise), even when a physical 6502 might. This doesn't change the timing of r/w operations.
 	uint8_t B;
 
@@ -94,7 +96,7 @@ extern inline void checkInterrupts(CPU *cpu);
 #define HIGH true
 #define LOW false
 
-// Used for debug log and disassebly
+// Used for debug log and disassembly
 const char instructions[256][8] = {
 	"BRK", "ORA_IZX", "KIL", "SLO_IZX", "NOP_ZP", "ORA_ZP", "ASL_ZP", "SLO_ZP", "PHP", "ORA_IMM", "ASL", "ANC_IMM", "NOP_ABS", "ORA_ABS", "ASL_ABS", "SLO_ABS",
 	"BPL", "ORA_IZY", "KIL", "SLO_IZY", "NOP_ZPX", "ORA_ZPX", "ASL_ZPX", "SLO_ZPX", "CLC", "ORA_ABY", "NOP", "SLO_ABY", "NOP_ABX", "ORA_ABX", "ASL_ABX", "SLO_ABX",
@@ -141,7 +143,7 @@ extern inline void write(CPU *cpu, uint16_t address, uint8_t data) {
 	else if (address >= 0x4020)
 		cartWriteCPU(cpu->ppu->cart, address, data);
 	if (cpu->debugLog)
-		printf("%4X W %2X", address, data);
+		printf("%4X W %02X", address, data);
 	// TODO this
 }
 
@@ -230,14 +232,14 @@ void initCPU(CPU *cpu, PPU *ppu, bool debugLog) {
 	cpu->PCH = 0x00;
 	cpu->PCL = 0xFF;
 	cpu->negFlag = cpu->oflowFlag = cpu->decFlag = cpu->noIRQFlag = cpu->zeroFlag = cpu->carryFlag = false;
-	cpu->SP = 0x00;
+	cpu->SP = cpu->IR = 0x00;
 	cpu->step = RESET_STEP;
 	cpu->IRQPin = cpu->NMIPin = HIGH;
 	cpu->nextIsIRQ = cpu->nextIsNMI = false;
 	
 	cpu->ppu = ppu;
 
-	for (int i = 0; i < 0x01FF; i++)
+	for (int i = 0; i < 0x800; i++)
 		cpu->internalRAM[i] = 0x00;
 
 	cpu->debugLog = debugLog;
@@ -1518,6 +1520,10 @@ extern inline void tickCPU(CPU *cpu) {
 			case 0xFF | (0b110 << 8): write(cpu, DATAPTR(cpu), cpu->B); checkInterrupts(cpu); END(cpu); break;
 
 
+			// On the 6502, every cycle MUST be either a read or a write cycle, even if it is unecessary or the results are unused.
+			// Because of this, NOPs (No OPeration) still access memory at that time.
+			// These "garbage reads" (or writes, in the case of read-modify-write) are also seen in a lot other operations where the CPU is busy calculating a result used in the next cycle.
+
 			// NOP
 			case 0x1A | (0b001 << 8):
 			case 0x3A | (0b001 << 8):
@@ -1591,22 +1597,23 @@ extern inline void tickCPU(CPU *cpu) {
 			case 0xFC | (0b100 << 8): read(cpu, DATAPTR(cpu)); checkInterrupts(cpu); END(cpu); break;
 
 			// KIL
+			// This just jams the CPU in a KIL instruction or an illegal step counter (which should never be reached) forever by never updating IR or step and doing nothing.
 			default: cpu->step--; break;
 		}
 	}
 	if (cpu->debugLog) {
 		switch (cpu->step & 0b11111000) {
-			// TODO fix RESET becoming BRK at last instruction
+			// TODO fix RESET, IRQ and NMI becoming BRK at last instruction
 			case RESET_STEP:
-				printf("  (  RESET step %i)\n", cpu->step & 0b00001111);
+				printf("  (%7s step %i)\n", "RESET", cpu->step & 0b00001111);
 				break;
 			case NMI_STEP:
-				printf("  (    NMI step %i)\n", cpu->step & 0b00001111);
+				printf("  (%7s step %i)\n", "NMI", cpu->step & 0b00001111);
 				break;
 			case IRQ_STEP:
-				printf("  (    IRQ step %i)\n", cpu->step & 0b00001111);
+				printf("  (%7s step %i)\n", "IRQ", cpu->step & 0b00001111);
 				break;
-			case (uint8_t)-1 & 0b11111000:
+			case (uint8_t)(-1) & 0b11111000:
 				printf("  (%7s step *)\n", instructions[cpu->IR]);
 				break;
 			default:

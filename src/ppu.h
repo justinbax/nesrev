@@ -305,13 +305,16 @@ extern inline uint8_t readRegisterPPU(PPU *ppu, uint16_t reg) {
 			ppu->dataBusCPU = ppu->registers[OAMDATA];
 			break;
 		case PPUDATA:
-			if (ppu->registers[PPUADDR] < 0x3F00) {
+			if (ppu->addressVRAM < 0x3F00) {
 				ppu->dataBusCPU = ppu->readBufferVRAM;
-				// TODO readBufferVRAM is only updated "at the PPU's earliest convenience" 
-				// ppu->readBufferVRAM = readAddressPPU(ppu->addressVRAM);
+				// TODO readBufferVRAM is only updated "at the PPU's earliest convenience"
+				// TODO this is not the NES behaviour at all, just temporary to get something working
+				PUTADDRBUS(ppu, ppu->addressVRAM);
+				ppu->readBufferVRAM = readAddressPPU(ppu, ppu->addressVRAM);
 			} else {
-				// ppu->dataBusCPU = readAddressPPU(ppu->registers[PPUADDR]);
-				// ppu->readBufferVRAM = readAddressPPU(0x2000 | (ppu->registers[PPUADDR] & 0x0FFF));
+				// TODO this is handled incorrectly
+				ppu->dataBusCPU = readAddressPPU(ppu, 0x2000 | (ppu->addressVRAM & 0x0FFF));
+				ppu->readBufferVRAM = readAddressPPU(ppu, 0x2000 | (ppu->addressVRAM & 0x0FFF));
 			}
 			// TODO inc is weird during rendering
 			ppu->addressVRAM += (ppu->registers[PPUCTRL] & CTRL_ADDRINC ? 32 : 1);
@@ -385,7 +388,7 @@ extern inline void writeRegisterPPU(PPU *ppu, uint16_t reg, uint8_t value) {
 			}
 			break;
 		case PPUDATA:
-			if (ppu->scanline >= 240 && ppu->scanline != 261) {
+			if ((ppu->scanline >= 240 && ppu->scanline != 261) || !RENDERING(ppu)) {
 				// Outside of rendering; VRAM accesses are 2 cycles, explaining the presence of the read buffer
 				// TODO the write itself takes 2 cycles, but I'm unsure how the PPU handles this (presumably immediatly sends the low bits with /ALE, "saves" the high bits in a temporary location then, on the next cycle, sends them with /R)
 				// I can't find documentation on how the PPU handles the reads being 2 cycles, so I'll just do it in one. It's not a good solution, but at least it shouldn't have graphical implications, as this is only in VBlank.
