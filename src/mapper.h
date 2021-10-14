@@ -24,8 +24,11 @@ extern inline uint8_t cartReadPPU(Cartridge *cart, uint16_t address) {
 extern inline void cartWritePPU(Cartridge *cart, uint16_t address, uint16_t value) {
 	// TODO this
 	// TODO assuming NROM with horizontal mirroring
-	if (address >= 0x2000)
+	if (address >= 0x2000) {
+		// TODO remove this
+		printf("VRAM %04X W %02X\n", (address & 0x3FF) | ((address >> 1) & 0x400), value);
 		cart->internalVRAM[(address & 0x3FF) | ((address >> 1) & 0x400)] = value;
+	}
 	else cart->CHR[address] = value;
 }
 

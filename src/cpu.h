@@ -6,6 +6,24 @@
 #include <stdio.h>
 #include "ppu.h"
 
+#define DBG_NONE 0
+#define DBG_REDUCED 1
+#define DBG_FULL 2
+
+#define RESET_VECTOR 0xFFFC
+#define RESET_STEP 0xF0
+#define NMI_VECTOR 0xFFFA
+#define NMI_STEP 0xE0
+#define IRQ_VECTOR 0xFFFE
+#define IRQ_STEP 0xD0
+
+#define READ 'r'
+#define WRITE 'W'
+
+// Used to avoid confusion when working with pins
+#define HIGH true
+#define LOW false
+
 typedef struct {
 	uint8_t PCL; // Low byte of program counter
 	uint8_t PCH; // High byte of program counter
@@ -53,11 +71,15 @@ typedef struct {
 
 	PPU *ppu;
 
-	bool debugLog;
+	// Debug information
+	int debugLog;
+	char rw;
+	uint16_t addressPins;
+	uint8_t dataPins;
 } CPU;
 
 // Interface functions
-void initCPU(CPU *cpu, PPU *ppu, bool debugLog);
+void initCPU(CPU *cpu, PPU *ppu, int debugLog);
 extern inline void pollInterrupts(CPU *cpu);
 extern inline void tickCPU(CPU *cpu);
 
@@ -84,17 +106,7 @@ extern inline void checkInterrupts(CPU *cpu);
 #define DATAPTR(cpu) (cpu->DPH << 8) | cpu->DPL
 #define PROGCOUNTER(cpu) ((cpu)->PCH << 8) | (cpu)->PCL
 #define END(cpu) cpu->step = -1
-
-#define RESET_VECTOR 0xFFFC
-#define RESET_STEP 0xF0
-#define NMI_VECTOR 0xFFFA
-#define NMI_STEP 0xE0
-#define IRQ_VECTOR 0xFFFE
-#define IRQ_STEP 0xD0
-
-// Used to avoid confusion when working with pins
-#define HIGH true
-#define LOW false
+#define PRINTFULLDBG(cpu, instruction, step) printf("%04X %c %02X (%7s step %c)\n", cpu->addressPins, cpu->rw, cpu->dataPins, instruction, step)
 
 // Used for debug log and disassembly
 const char instructions[256][8] = {
@@ -118,33 +130,33 @@ const char instructions[256][8] = {
 
 extern inline uint8_t read(CPU *cpu, uint16_t address) {
 	// TODO this
-	uint8_t data;
 	if (address < 0x2000)
-		data = cpu->internalRAM[address & 0x7FF];
+		cpu->dataPins = cpu->internalRAM[address & 0x7FF];
 	else if (address < 0x4000)
-		data = readRegisterPPU(cpu->ppu, address);
+		cpu->dataPins = readRegisterPPU(cpu->ppu, address);
 	else if (address < 4020)
-		data = 0x00;
+		cpu->dataPins = 0x00;
 	else 
-		data = cartReadCPU(cpu->ppu->cart, address);
+		cpu->dataPins = cartReadCPU(cpu->ppu->cart, address);
 
-	// TODO do an IF LOGGING or something
-	// TODO log at the end of tick so we can output IR and stuff
-	if (cpu->debugLog)
-		printf("%04X r %02X", address, data);
-	return data;
+	cpu->rw = READ;
+	cpu->addressPins = address;
+
+	return cpu->dataPins;
 }
 
 extern inline void write(CPU *cpu, uint16_t address, uint8_t data) {
+	// TODO this
 	if (address < 0x2000)
 		cpu->internalRAM[address & 0x7FF] = data;
 	else if (address < 0x4000)
 		writeRegisterPPU(cpu->ppu, address, data);
 	else if (address >= 0x4020)
 		cartWriteCPU(cpu->ppu->cart, address, data);
-	if (cpu->debugLog)
-		printf("%4X W %02X", address, data);
-	// TODO this
+	
+	cpu->rw = WRITE;
+	cpu->addressPins = address;
+	cpu->dataPins = data;
 }
 
 extern inline uint8_t fetch(CPU *cpu) {
@@ -198,10 +210,29 @@ extern inline void izyAddressing(CPU *cpu) {
 
 extern inline void branch(CPU *cpu, bool condition) {
 	switch (cpu->step) {
-		case 1: cpu->temp = fetch(cpu); if (!condition) END(cpu); checkInterrupts(cpu); break;
-		// TODO ???
-		case 2: read(cpu, PROGCOUNTER(cpu)); cpu->PCL += ((cpu->temp & 0b10000000) > 0 ? cpu->temp - 256 : cpu->temp); if (!(((cpu->temp & 0b10000000) == 0 && cpu->PCL < cpu->temp) || ((cpu->temp & 0b10000000) > 0 && cpu->PCL > (~cpu->temp) + 1))) checkInterrupts(cpu); END(cpu); break;
-		case 3: read(cpu, PROGCOUNTER(cpu)); if (cpu->temp < 128 && cpu->PCL > cpu->temp) cpu->PCH--; else cpu->PCH++; break;
+		case 1:
+			cpu->temp = fetch(cpu);
+			if (!condition) END(cpu);
+			checkInterrupts(cpu);
+			break;
+		case 2:
+			read(cpu, PROGCOUNTER(cpu));
+			// Two's complement
+			cpu->PCL += ((cpu->temp & 0b10000000) > 0 ? (int8_t)(cpu->temp - 256) : cpu->temp);
+			// If a page boundary is crossed
+			if (((cpu->temp & 0b10000000) == 0 && cpu->PCL < cpu->temp) || ((cpu->temp & 0b10000000) > 0 && cpu->PCL >= cpu->temp))
+				checkInterrupts(cpu);
+			else
+				END(cpu);
+			break;
+		case 3:
+			read(cpu, PROGCOUNTER(cpu));
+			if (cpu->temp & 0b10000000)
+				cpu->PCH--;
+			else
+				cpu->PCH++;
+			END(cpu);
+			break;
 	}
 }
 
@@ -226,7 +257,7 @@ extern inline void checkInterrupts(CPU *cpu) {
 
 
 // Interface functions
-void initCPU(CPU *cpu, PPU *ppu, bool debugLog) {
+void initCPU(CPU *cpu, PPU *ppu, int debugLog) {
 	// Note: this is the status of the CPU BEFORE the reset sequence
 	cpu->A = cpu->X = cpu->Y = 0;
 	cpu->PCH = 0x00;
@@ -243,6 +274,9 @@ void initCPU(CPU *cpu, PPU *ppu, bool debugLog) {
 		cpu->internalRAM[i] = 0x00;
 
 	cpu->debugLog = debugLog;
+	cpu->addressPins = 0x0000;
+	cpu->dataPins = 0x00;
+	cpu->rw = '?';
 }
 
 extern inline void pollInterrupts(CPU *cpu) {
@@ -251,11 +285,12 @@ extern inline void pollInterrupts(CPU *cpu) {
 	cpu->prevNMI = cpu->NMIPin;
 }
 
+
 extern inline void tickCPU(CPU *cpu) {
 	// TODO none of this is tested
 	// TODO optimize
 	// TODO interrupts are ugly
-	
+
 	// An NMI has priority over an IRQ
 	if (cpu->nextIsNMI && cpu->step == 0) {
 		cpu->IR = 0x00;
@@ -348,7 +383,7 @@ extern inline void tickCPU(CPU *cpu) {
 			case 0x09 | (0b001 << 8): cpu->A |= fetch(cpu); nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu); break;
 
 			// ASL
-			case 0x0A | (0b001 << 8): fetch(cpu); cpu->carryFlag = cpu->A & 0b10000000; cpu->A <<= 1; nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu); break;
+			case 0x0A | (0b001 << 8): read(cpu, PROGCOUNTER(cpu)); cpu->carryFlag = cpu->A & 0b10000000; cpu->A <<= 1; nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu); break;
 
 			// ANC_IMM
 			case 0x0B | (0b001 << 8):
@@ -1601,26 +1636,32 @@ extern inline void tickCPU(CPU *cpu) {
 			default: cpu->step--; break;
 		}
 	}
-	if (cpu->debugLog) {
+
+	if (cpu->debugLog == DBG_FULL) {
 		switch (cpu->step & 0b11111000) {
-			// TODO fix RESET, IRQ and NMI becoming BRK at last instruction
+			// TODO fix RESET, IRQ and NMI becoming BRK at last instruction. We may need to abandon the trick explained below in order to fix this.
+			// In PRINTFULLDBG, the step is given as a char in order to handle cycles that finish with END(cpu), leaving the step counter at (uint8_t)(-1).
+			// Conveniently, if we add '0' to this value to convert it to ASCII as we would with single-digit numbers, we get the char '/', which represents quite nicely the last step of an instruction.
 			case RESET_STEP:
-				printf("  (%7s step %i)\n", "RESET", cpu->step & 0b00001111);
+				PRINTFULLDBG(cpu, "RESET", (cpu->step - RESET_STEP + '0'));
 				break;
 			case NMI_STEP:
-				printf("  (%7s step %i)\n", "NMI", cpu->step & 0b00001111);
+				PRINTFULLDBG(cpu, "NMI", (cpu->step - NMI_STEP + '0'));
 				break;
 			case IRQ_STEP:
-				printf("  (%7s step %i)\n", "IRQ", cpu->step & 0b00001111);
-				break;
-			case (uint8_t)(-1) & 0b11111000:
-				printf("  (%7s step *)\n", instructions[cpu->IR]);
+				PRINTFULLDBG(cpu, "IRQ", (cpu->step - IRQ_STEP + '0'));
 				break;
 			default:
-				printf("  (%7s step %i)\n", instructions[cpu->IR], cpu->step);
+				if (instructions[cpu->IR][0] != 'K' || instructions[cpu->IR][1] != 'I' || instructions[cpu->IR][2] != 'L')
+					PRINTFULLDBG(cpu, instructions[cpu->IR], (cpu->step + '0'));
 				break;
 		}
+	} else if (cpu->debugLog == DBG_REDUCED && cpu->step == (uint8_t)(-1)) {
+		// TODO handle arguments to instructions
+		// TODO handle RESET, NMI, IRQ
+		printf("%7s\n", instructions[cpu->IR]);
 	}
+
 	cpu->step++;
 }
 

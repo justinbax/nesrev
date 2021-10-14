@@ -538,13 +538,14 @@ extern inline void tickPPU(PPU *ppu) {
 			shiftRegistersPPU(ppu);
 
 		} else if (ppu->pixel <= 320) {
-			if (ppu->pixel >= 280 && ppu->pixel < 305 && ppu->scanline == 261) {
+			if (ppu->pixel >= 280 && ppu->pixel < 305 && ppu->scanline == 261 && RENDERING(ppu)) {
 				ppu->addressVRAM &= ~(VRAM_COARSEY | VRAM_FINEY | VRAM_YNAMETABLE);
 				ppu->addressVRAM |= ppu->tempAddressVRAM & (VRAM_COARSEY | VRAM_FINEY | VRAM_YNAMETABLE);
 				ppu->sprZeroOnCurrent = ppu->sprZeroOnNext;
+				ppu->registers[OAMADDR] = 0;
 			}
 
-			ppu->registers[OAMADDR] = 0;
+			// TODO disable sprite eval during rendering
 			// Sprite evaluation & tile fetching
 			uint8_t currentOAM = (ppu->pixel - 1) & 0b00111111;
 			switch (currentOAM & 0b111) {

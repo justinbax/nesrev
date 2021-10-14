@@ -93,7 +93,7 @@ int main(int argc, char *argv[]) {
 	PPU ppu;
 
 	powerUpPPU(&ppu, colors, &cart);
-	initCPU(&cpu, &ppu, false);
+	initCPU(&cpu, &ppu, DBG_NONE);
 
 	// TODO very dangerous, just for test purposes
 	// TODO unsigned and const things are just a mess
