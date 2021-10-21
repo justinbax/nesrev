@@ -151,8 +151,8 @@ const Context setupContext(const int width, const int height) {
 	}
 
 	// Normalized width and height are 2/N instead of 1/N because normalized device coordinates range from [-1.0 ; 1.0], giving a total range of 2
-	float pixelWidthNormalized = 2.0f / width;
-	float pixelHeightNormalized = 2.0f / height;
+	const float pixelWidthNormalized = 2.0f / width;
+	const float pixelHeightNormalized = 2.0f / height;
 	
 	// TODO this whole thing looks like magic, but is also very ugly
 	for (int i = 0; i < height; i++) {
@@ -167,9 +167,10 @@ const Context setupContext(const int width, const int height) {
 				// k = 3 : top-right vertex (+x, +y)
 				// j + (k & 0b1) adds one to j when k mod 2 == 1. In other words, when k is for one of the right vertices, this adds 1 * pixelWidthNormalized to the x coordinate
 				// "Why are you using k & 0b1, you can check parity with the modulo operator" yeah I really don't care. 
-				vertices[(currentPixel * VERTEX_COUNT + k) * VERTEX_SIZE + 0] = pixelWidthNormalized * (j + (k & 0b1)) - 1; // x coordinate
+				vertices[(currentPixel * VERTEX_COUNT + k) * VERTEX_SIZE + 0] = pixelWidthNormalized * (j + (k & 0b1)) - 1.0f; // x coordinate
 				// i + (k > 1) adds one to i when k > 1. In other words, when k is for one of the top vertices, this adds 1 * pixelHeightNormalized to the y coordinates
-				vertices[(currentPixel * VERTEX_COUNT + k) * VERTEX_SIZE + 1] = pixelHeightNormalized * (i + (k > 1)) - 1; // y coordinate
+				vertices[(currentPixel * VERTEX_COUNT + k) * VERTEX_SIZE + 1] = -1 * (pixelHeightNormalized * (i + (k > 1)) - 1.0f); // y coordinate
+				// This is multiplied by -1 because, in normalized device coordinates, y == 1.0f is the top of the screen and we want the array of triangles to be top-to-bottom for the PPU
 			}
 			// For each rectangle, this fills the indices array with the correct indices to dissect it into two triangles
 			indices[currentPixel * INDICES_PER_POLYGON + 0] = currentPixel * VERTEX_COUNT + 0; // first triangle : bottom-left

@@ -152,12 +152,13 @@ extern inline void writeAddressPPU(PPU *ppu, uint16_t address, uint8_t value) {
 }
 
 extern inline void shiftRegistersPPU(PPU *ppu) {
-	ppu->bgPatternData[0] >>= 1;
-	ppu->bgPatternData[1] >>= 1;
-	ppu->bgPaletteData[0] >>= 1;
-	ppu->bgPaletteData[1] >>= 1;
-	ppu->bgPaletteData[0] |= (ppu->bgSerialPaletteLatch[0] << 7);
-	ppu->bgPaletteData[1] |= (ppu->bgSerialPaletteLatch[1] << 7);
+	// These internal registers use the most significant bit to render next
+	ppu->bgPatternData[0] <<= 1;
+	ppu->bgPatternData[1] <<= 1;
+	ppu->bgPaletteData[0] <<= 1;
+	ppu->bgPaletteData[1] <<= 1;
+	ppu->bgPaletteData[0] |= ppu->bgSerialPaletteLatch[0];
+	ppu->bgPaletteData[1] |= ppu->bgSerialPaletteLatch[1];
 }
 
 extern inline void incrementX(PPU *ppu) {
@@ -179,8 +180,9 @@ extern inline void incrementY(PPU *ppu) {
 }
 
 extern inline void feedShiftRegisters(PPU *ppu) {
-	ppu->bgPatternData[0] |= (ppu->bgPatternLatch[0] << 8);
-	ppu->bgPatternData[1] |= (ppu->bgPatternLatch[1] << 8);
+	ppu->bgPatternData[0] |= ppu->bgPatternLatch[0];
+	ppu->bgPatternData[1] |= ppu->bgPatternLatch[1];
+	// Unlike pattern data, bgPaletteLatch uses its least significant bits to render next
 	ppu->bgSerialPaletteLatch[0] = ppu->bgPaletteLatch & 0b1;
 	ppu->bgSerialPaletteLatch[1] = ppu->bgPaletteLatch & 0b10;
 }
@@ -192,18 +194,21 @@ extern inline void renderPixel(PPU *ppu) {
 	for (int i = 7; i >= 0; i--) {
 		ppu->sprXPos[i]--;
 		if ((((ppu->sprXPos[i] - 1) & 0xFF) >= (0x100 - 8)) && (ppu->sprPatternLow[i] || ppu->sprPatternHigh[i])) {
-			sprColor = (ppu->sprPatternLow[i] >> ppu->fineX) & 0b1;
-			sprColor |= ((ppu->sprPatternHigh[i] >> ppu->fineX) & 0b1) << 1;
+			// Similar to background data, most significant bits of sprite data are the next to be rendered
+			sprColor = ((ppu->sprPatternLow[i] << ppu->fineX) & 0x80) >> 7;
+			sprColor |= ((ppu->sprPatternHigh[i] << ppu->fineX) & 0x80) >> 6;
+
 			attributes = ppu->secondOAM[(i << 2) | 0b10];
 			sprColor |= (attributes & 0b11) << 2;
 			outputUnit = i;
 		}
 	}
 
-	bgColor = (ppu->bgPatternData[0] >> ppu->fineX) & 0b1;
-	bgColor |= ((ppu->bgPatternData[1] >> ppu->fineX) & 0b1) << 1;
-	bgColor |= ((ppu->bgPaletteData[0] >> ppu->fineX) & 0b1) << 2;
-	bgColor |= ((ppu->bgPaletteData[1] >> ppu->fineX) & 0b1) << 3;
+	// Most significant bits of bgPatternData (0x8000; bit 15) and bgPaletteData (0x80; bit 7) are the next one to be rendered
+	bgColor = ((ppu->bgPatternData[0] << ppu->fineX) & 0x8000) >> 15;
+	bgColor |= ((ppu->bgPatternData[1] << ppu->fineX) & 0x8000) >> 14;
+	bgColor |= ((ppu->bgPaletteData[0] << ppu->fineX) & 0x80) >> 5;
+	bgColor |= ((ppu->bgPaletteData[1] << ppu->fineX) & 0x80) >> 4;
 
 	// Disables rendering according to PPUMASK
 	if (!(ppu->registers[PPUMASK] & MASK_RENDERSPR) || (!(ppu->registers[PPUMASK] & MASK_SHOWLEFTSPR) && ppu->pixel < 8))
@@ -366,7 +371,7 @@ extern inline void writeRegisterPPU(PPU *ppu, uint16_t reg, uint8_t value) {
 					ppu->tempAddressVRAM |= value >> 3;
 					ppu->fineX = value & 0b111;
 				} else {
-					ppu->tempAddressVRAM &= ~VRAM_COARSEY | ~VRAM_FINEY;
+					ppu->tempAddressVRAM &= ~VRAM_COARSEY & ~VRAM_FINEY;
 					ppu->tempAddressVRAM |= (value & 0b11111000) << 2;
 					ppu->tempAddressVRAM |= (value & 0b111) << 12;
 				}
@@ -511,6 +516,7 @@ extern inline void tickPPU(PPU *ppu) {
 					}
 				}
 			}
+
 			// Tile fetching
 			switch ((ppu->pixel - 1) & 0b111) {
 				case 0b000:
@@ -612,7 +618,7 @@ extern inline void tickPPU(PPU *ppu) {
 					break;
 				case 0b001: ppu->bgNametableLatch = readAddressPPU(ppu, NAMETABLEADDR(ppu)); break;
 				case 0b010: PUTADDRBUS(ppu, ATTRIBUTEADDR(ppu)); break;
-				case 0b011: ppu->bgPaletteLatch = readAddressPPU(ppu, ATTRIBUTEADDR(ppu)); break;
+				case 0b011: ppu->bgPaletteLatch = readAddressPPU(ppu, ATTRIBUTEADDR(ppu)); ppu->bgPaletteLatch >>= ((ppu->addressVRAM & 0b1000000) >> 4) | (ppu->addressVRAM & 0b10); break;
 				case 0b100: PUTADDRBUS(ppu, BGPATTERNADDR(ppu)); break;
 				case 0b101: ppu->bgPatternLatch[0] = readAddressPPU(ppu, BGPATTERNADDR(ppu)); break;
 				case 0b110: PUTADDRBUS(ppu, 0b1000 | BGPATTERNADDR(ppu)); break;

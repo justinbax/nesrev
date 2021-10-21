@@ -1176,7 +1176,7 @@ extern inline void tickCPU(CPU *cpu) {
 			case 0xB1 | (0b010 << 8):
 			case 0xB1 | (0b011 << 8): izyAddressing(cpu); break;
 			case 0xB1 | (0b100 << 8): cpu->A = read(cpu, DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; else {nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu);} break;
-			case 0xB1 | (0b101 << 8): cpu->A = read(cpu, DATAPTR(cpu)); nzFlags(cpu, cpu->A); break;
+			case 0xB1 | (0b101 << 8): cpu->A = read(cpu, DATAPTR(cpu)); nzFlags(cpu, cpu->A); END(cpu); break;
 
 			// LAX_IZY
 			case 0xB3 | (0b001 << 8):

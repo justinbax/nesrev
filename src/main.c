@@ -109,7 +109,7 @@ int main(int argc, char *argv[]) {
 		double currentTime = glfwGetTime();
 		if (currentTime > previousTime + frameDuration) {
 			previousTime = currentTime;
-			for (int i = 0; i < 80000; i++) {
+			for (int i = 0; i < 29780; i++) {
 				// TODO the CPU / PPU alignment is weird
 				tickPPU(&ppu);
 				tickPPU(&ppu);
