@@ -41,8 +41,9 @@ extern inline uint8_t cartReadCPU(Cartridge *cart, uint16_t address) {
 extern inline void cartWriteCPU(Cartridge *cart, uint16_t address, uint16_t value) {
 	// TODO this
 	// TODO the mirroring (... & (cart->PRGsize - 1)) isn't right AT ALL
-	if (address < 0x6000) return;
-	cart->PRG[(address - 0x6000) & (cart->PRGsize - 1)] = value;
+	// TODO this should be ROM, not RAM
+	if (address < 0x8000) return;
+	cart->PRG[(address - 0x8000) & (cart->PRGsize - 1)] = value;
 }
 
 #endif // ifndef MAPPER_H

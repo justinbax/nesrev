@@ -9,6 +9,7 @@
 **/*.app
 main
 bin
+**/log.txt
 
 # Platform-specific files
 Thumbs.db

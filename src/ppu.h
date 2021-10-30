@@ -126,7 +126,7 @@ extern inline uint8_t flipByte(uint8_t value);
 
 // Undefined later
 #define PUTADDRBUS(ppu, address) ppu->addressBusLatch = address
-#define RENDERING(ppu) (ppu->registers[PPUMASK] & (MASK_RENDERSPR | MASK_RENDERBG))
+#define RENDERING(ppu) ((ppu->registers[PPUMASK] & (MASK_RENDERSPR | MASK_RENDERBG)) && (ppu->scanline < 240 || ppu->scanline == 261))
 #define UPDATENMI(ppu) ppu->outInterrupt = !((ppu->registers[PPUSTATUS] & STATUS_VBLANK) && (ppu->registers[PPUCTRL] & CTRL_NMI))
 #define NAMETABLEADDR(ppu) (0x2000 | (ppu->addressVRAM & 0x0FFF))
 #define ATTRIBUTEADDR(ppu) (0x23C0 | (ppu->addressVRAM & (VRAM_XNAMETABLE | VRAM_YNAMETABLE)) | ((ppu->addressVRAM & VRAM_COARSEX) >> 2) | ((ppu->addressVRAM & 0b1110000000) >> 4))
@@ -305,7 +305,7 @@ extern inline uint8_t readRegisterPPU(PPU *ppu, uint16_t reg) {
 			ppu->secondWrite = false;
 			break;
 		case OAMDATA:
-			if ((ppu->scanline >= 240 && ppu->scanline != 261) || !RENDERING(ppu))
+			if (!RENDERING(ppu))
 				ppu->registers[OAMDATA] = ppu->OAM[ppu->registers[OAMADDR]];
 			ppu->dataBusCPU = ppu->registers[OAMDATA];
 			break;
@@ -388,12 +388,13 @@ extern inline void writeRegisterPPU(PPU *ppu, uint16_t reg, uint8_t value) {
 					ppu->tempAddressVRAM &= 0b111111100000000;
 					ppu->tempAddressVRAM |= value;
 					ppu->addressVRAM = ppu->tempAddressVRAM;
+
 				}
 				ppu->secondWrite = !ppu->secondWrite;
 			}
 			break;
 		case PPUDATA:
-			if ((ppu->scanline >= 240 && ppu->scanline != 261) || !RENDERING(ppu)) {
+			if (!RENDERING(ppu)) {
 				// Outside of rendering; VRAM accesses are 2 cycles, explaining the presence of the read buffer
 				// TODO the write itself takes 2 cycles, but I'm unsure how the PPU handles this (presumably immediatly sends the low bits with /ALE, "saves" the high bits in a temporary location then, on the next cycle, sends them with /R)
 				// I can't find documentation on how the PPU handles the reads being 2 cycles, so I'll just do it in one. It's not a good solution, but at least it shouldn't have graphical implications, as this is only in VBlank.
@@ -428,7 +429,7 @@ extern inline void tickPPU(PPU *ppu) {
 	if (RENDERING(ppu)) {
 		if (ppu->pixel == 256)
 			incrementY(ppu);
-		if ((ppu->pixel & 0b111) == 0 && (ppu->pixel <= 256 || ppu->pixel >= 328) && ppu->pixel != 0)
+		if ((ppu->pixel & 0b111) == 0 && (ppu->pixel <= 256 || ppu->pixel >= 328) && ppu->pixel != 0 && ppu->scanline )
 			incrementX(ppu);
 		else if (ppu->pixel == 257) {
 			ppu->addressVRAM &= ~(VRAM_COARSEX | VRAM_XNAMETABLE);

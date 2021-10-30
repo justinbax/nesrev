@@ -93,7 +93,15 @@ int main(int argc, char *argv[]) {
 	PPU ppu;
 
 	powerUpPPU(&ppu, colors, &cart);
-	initCPU(&cpu, &ppu, DBG_NONE);
+	initCPU(&cpu, &ppu);
+
+	// Debug logging
+	// TODO remove this
+	FILE *logFile = fopen("src/log.txt", "w+");
+	if (logFile == NULL) {
+		printf("Fatal error : can't open / create log file.\n");
+		return -0x07;
+	}
 
 	// TODO very dangerous, just for test purposes
 	// TODO unsigned and const things are just a mess
@@ -102,7 +110,7 @@ int main(int argc, char *argv[]) {
 	free(palette);
 
 	double previousTime = glfwGetTime();
-	double frameDuration = 1.0f / 10;
+	double frameDuration = 1.0f / 60;
 
 	while (!glfwWindowShouldClose(window)) {
 		// TODO very inefficient (no CPU sleep)

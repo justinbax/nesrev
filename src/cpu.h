@@ -73,15 +73,18 @@ typedef struct {
 
 	// Debug information
 	int debugLog;
+	FILE *logFile;
+
 	char rw;
 	uint16_t addressPins;
 	uint8_t dataPins;
 } CPU;
 
 // Interface functions
-void initCPU(CPU *cpu, PPU *ppu, int debugLog);
+void initCPU(CPU *cpu, PPU *ppu);
 extern inline void pollInterrupts(CPU *cpu);
 extern inline void tickCPU(CPU *cpu);
+void setLogCPU(CPU *cpu, int logOption, FILE *logFile);
 
 // Non-interface functions, still accessible by external code (explanation below)
 extern inline uint8_t read(CPU *cpu, uint16_t address);
@@ -106,7 +109,7 @@ extern inline void checkInterrupts(CPU *cpu);
 #define DATAPTR(cpu) (cpu->DPH << 8) | cpu->DPL
 #define PROGCOUNTER(cpu) ((cpu)->PCH << 8) | (cpu)->PCL
 #define END(cpu) cpu->step = -1
-#define PRINTFULLDBG(cpu, instruction, step) printf("%04X %c %02X (%7s step %c)\n", cpu->addressPins, cpu->rw, cpu->dataPins, instruction, step)
+#define PRINTFULLDBG(cpu, instruction, step) fprintf(cpu->logFile, "%04X %c %02X (%7s step %c)\n", cpu->addressPins, cpu->rw, cpu->dataPins, instruction, step)
 
 // Used for debug log and disassembly
 const char instructions[256][8] = {
@@ -243,7 +246,9 @@ extern inline void nzFlags(CPU *cpu, uint8_t result) {
 
 extern inline void add(CPU *cpu, uint8_t value) {
 	uint8_t result = cpu->A + value + cpu->carryFlag;
-	cpu->carryFlag = (result < cpu->A);
+	// The carry flag is also set if the 8-bit result is the same but it still overflowed because of the previous carry flag (SEC + ADC $FF sets the carry flag even though the 8-bit result doesn't appear to have overflowed)
+	cpu->carryFlag = (result < cpu->A) || (result == cpu->A && cpu->carryFlag);
+	// Weird signed overflow check, used by very few programs
 	cpu->oflowFlag = (((cpu->A ^ result) & (value & result) & 0b10000000) > 0);
 	cpu->A = result;
 	nzFlags(cpu, cpu->A);
@@ -257,7 +262,7 @@ extern inline void checkInterrupts(CPU *cpu) {
 
 
 // Interface functions
-void initCPU(CPU *cpu, PPU *ppu, int debugLog) {
+void initCPU(CPU *cpu, PPU *ppu) {
 	// Note: this is the status of the CPU BEFORE the reset sequence
 	cpu->A = cpu->X = cpu->Y = 0;
 	cpu->PCH = 0x00;
@@ -273,7 +278,8 @@ void initCPU(CPU *cpu, PPU *ppu, int debugLog) {
 	for (int i = 0; i < 0x800; i++)
 		cpu->internalRAM[i] = 0x00;
 
-	cpu->debugLog = debugLog;
+	cpu->debugLog = DBG_NONE;
+	cpu->logFile = NULL;
 	cpu->addressPins = 0x0000;
 	cpu->dataPins = 0x00;
 	cpu->rw = '?';
@@ -283,6 +289,14 @@ extern inline void pollInterrupts(CPU *cpu) {
 	cpu->IRQPending = !cpu->IRQPin;
 	if (cpu->prevNMI && !cpu->NMIPin) cpu->NMIPending = true;
 	cpu->prevNMI = cpu->NMIPin;
+}
+
+void setLogCPU(CPU *cpu, int logOption, FILE *logFile) {
+	cpu->logFile = logFile;
+
+	cpu->debugLog = logOption;
+	if (cpu->logFile == NULL)
+		cpu->debugLog = DBG_NONE;
 }
 
 
@@ -331,7 +345,7 @@ extern inline void tickCPU(CPU *cpu) {
 			case 0x00 | ((IRQ_STEP + 1) << 8): read(cpu, PROGCOUNTER(cpu)); break;
 			case 0x00 | ((IRQ_STEP + 2) << 8): push(cpu, cpu->PCH); break;
 			case 0x00 | ((IRQ_STEP + 3) << 8): push(cpu, cpu->PCL); break;
-			case 0x00 | ((IRQ_STEP + 4) << 8): push(cpu, (cpu->negFlag << 7) | (cpu->oflowFlag << 6) | 0b00100000 | (cpu->decFlag << 3) | (cpu->noIRQFlag << 2) | (cpu->zeroFlag << 1) | cpu->carryFlag); if (cpu->NMIPending) cpu->step = IRQ_STEP + 4; break;
+			case 0x00 | ((IRQ_STEP + 4) << 8): push(cpu, (cpu->negFlag << 7) | (cpu->oflowFlag << 6) | 0b00100000 | (cpu->decFlag << 3) | (cpu->noIRQFlag << 2) | (cpu->zeroFlag << 1) | cpu->carryFlag); if (cpu->NMIPending) cpu->step = NMI_STEP + 4; break;
 			case 0x00 | ((IRQ_STEP + 5) << 8): cpu->PCL = read(cpu, IRQ_VECTOR); cpu->noIRQFlag = true; break;
 			case 0x00 | ((IRQ_STEP + 6) << 8): cpu->PCH = read(cpu, IRQ_VECTOR + 1); END(cpu); break;
 
@@ -1659,7 +1673,7 @@ extern inline void tickCPU(CPU *cpu) {
 	} else if (cpu->debugLog == DBG_REDUCED && cpu->step == (uint8_t)(-1)) {
 		// TODO handle arguments to instructions
 		// TODO handle RESET, NMI, IRQ
-		printf("%7s\n", instructions[cpu->IR]);
+		fprintf(cpu->logFile, "%7s\n", instructions[cpu->IR]);
 	}
 
 	cpu->step++;
