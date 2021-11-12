@@ -137,16 +137,20 @@ extern inline uint8_t flipByte(uint8_t value);
 
 // Non-interface functions
 extern inline uint8_t readAddressPPU(PPU *ppu, uint16_t address) {
-	// TODO this
-	if (address >= 0x3F00)
+	if (address >= 0x3F00) {
+		if ((address & 0b11) == 0)
+			return ppu->palettes[address & 0x0F];
 		return ppu->palettes[address & 0x1F];
+	}
 	return cartReadPPU(ppu->cart, (address & 0b11111100000000) | ppu->addressBusLatch);
 }
 
 extern inline void writeAddressPPU(PPU *ppu, uint16_t address, uint8_t value) {
-	// TODO this
-	if (address >= 0x3F00)
+	if (address >= 0x3F00) {
+		if ((address & 0b11) == 0)
+			ppu->palettes[address & 0x0F] = value;
 		ppu->palettes[address & 0x1F] = value;
+	}
 	else
 		cartWritePPU(ppu->cart, (address & 0b11111100000000) | ppu->addressBusLatch, value);
 }
@@ -192,13 +196,14 @@ extern inline void renderPixel(PPU *ppu) {
 
 	// Updates X position of sprites and checks for the first active sprite
 	for (int i = 7; i >= 0; i--) {
-		ppu->sprXPos[i]--;
-		if ((((ppu->sprXPos[i] - 1) & 0xFF) >= (0x100 - 8)) && (ppu->sprPatternLow[i] || ppu->sprPatternHigh[i])) {
+		const uint8_t shiftValue = (ppu->pixel - ppu->sprXPos[i]);
+		// Checks if (x pos in range of current scanline) AND (selected color bit is non-zero)
+		if ((ppu->pixel >= ppu->sprXPos[i] && ppu->pixel < ppu->sprXPos[i] + 8) && (((ppu->sprPatternLow[i] | ppu->sprPatternHigh[i]) << shiftValue) & 0x80)) {
 			// Similar to background data, most significant bits of sprite data are the next to be rendered
-			sprColor = ((ppu->sprPatternLow[i] << ppu->fineX) & 0x80) >> 7;
-			sprColor |= ((ppu->sprPatternHigh[i] << ppu->fineX) & 0x80) >> 6;
+			sprColor = ((ppu->sprPatternLow[i] << shiftValue) & 0x80) >> 7;
+			sprColor |= ((ppu->sprPatternHigh[i] << shiftValue) & 0x80) >> 6;
 
-			attributes = ppu->secondOAM[(i << 2) | 0b10];
+			attributes = ppu->sprAttributes[i];
 			sprColor |= (attributes & 0b11) << 2;
 			outputUnit = i;
 		}
@@ -224,13 +229,13 @@ extern inline void renderPixel(PPU *ppu) {
 	// Multiplexer : checks which pixel (background, sprite or backdrop) should be rendered on screen
 	int framebufferIndex = (ppu->scanline * 256 + ppu->pixel) * 3;
 	uint8_t paletteIndex = 0;
-	if (bgColor && (!sprColor || attributes & SPR_PRIORITY))
+	if (bgColor && (!sprColor || (attributes & SPR_PRIORITY)))
 		paletteIndex = bgColor;
 	else if (sprColor && (!bgColor || !(attributes & SPR_PRIORITY)))
 		paletteIndex = sprColor | 0b10000;
 
 	if ((paletteIndex & 0b11) == 0)
-		paletteIndex &= 0b11101111;
+		paletteIndex &= 0b01111;
 
 	// Render with greyscale, if specified in PPUMASK
 	ppu->framebuffer[framebufferIndex] = ppu->colors[ppu->palettes[paletteIndex] & (ppu->registers[PPUMASK] & 0b1 ? 0x30 : 0x3F)][0];
@@ -356,7 +361,7 @@ extern inline void writeRegisterPPU(PPU *ppu, uint16_t reg, uint8_t value) {
 			ppu->registers[OAMADDR] = value;
 			break;
 		case OAMDATA:
-			if (ppu->scanline < 240 || ppu->scanline == 261)
+			if (RENDERING(ppu))
 				// TODO according to NesDev, "it's plausible that it could bump the low bits instead depending on the current status of sprite evaluation"
 				ppu->registers[OAMADDR] += 4;
 			else {
@@ -388,7 +393,6 @@ extern inline void writeRegisterPPU(PPU *ppu, uint16_t reg, uint8_t value) {
 					ppu->tempAddressVRAM &= 0b111111100000000;
 					ppu->tempAddressVRAM |= value;
 					ppu->addressVRAM = ppu->tempAddressVRAM;
-
 				}
 				ppu->secondWrite = !ppu->secondWrite;
 			}
@@ -459,29 +463,32 @@ extern inline void tickPPU(PPU *ppu) {
 					if (ppu->pixel & 1) {
 						// ppu->OAM[ppu->registers[OAMADDR]]; // Dummy read for future logging
 						ppu->registers[OAMDATA] = 0xFF;
+					} else {
+						ppu->secondOAM[(ppu->pixel - 1) >> 1] = ppu->registers[OAMDATA];
 					}
-					else ppu->secondOAM[ppu->pixel >> 1] = ppu->registers[OAMDATA];
 				} else if ((ppu->registers[OAMADDR] == 0 && ppu->pixel > 66) || ((ppu->registers[OAMADDR] & 0b11111100) == 0 && ppu->sprCount >= 8)) {
 					// There are no more sprites to be evaluated
 					// The above if statement is to ensure this is reached if we reached the end of OAM without filling up secondOAM (in which case OAMADDR will always be 0) OR if we did fill it (in which case the sprite overflow bug occured, so OAMADDR will be anywhere between 0 and 3)
 					if (ppu->pixel & 1) {
 						ppu->registers[OAMDATA] = ppu->OAM[ppu->registers[OAMADDR]];
 						ppu->registers[OAMADDR] &= 0b11111100;
-						ppu->registers[OAMADDR] += 4;
+						// ppu->registers[OAMADDR] += 4;
 					} // else
-						// ppu->secondOAM[ppu->secondOAMptr]; // Dummy read for future logging
+						// ppu->secondOAM[ppu->secondOAMptr]; // TODO Dummy read for future logging
 				} else {
 					// There are still sprites to be evaluated
 					// TODO maybe join spriteInRange and else together
 					if (ppu->pixel & 1) ppu->registers[OAMDATA] = ppu->OAM[ppu->registers[OAMADDR]];
 					else if (ppu->spriteInRange) {
-						if (ppu->sprCount < 8) ppu->secondOAM[ppu->secondOAMptr] = ppu->registers[OAMDATA];
+						if (ppu->sprCount < 7)
+							ppu->secondOAM[ppu->secondOAMptr] = ppu->registers[OAMDATA];
 						// else ppu->secondOAM[ppu->secondOAMptr]; // Dummy read for future logging
 
 						ppu->registers[OAMADDR]++;
+						ppu->secondOAMptr++;
 
 						// The last byte of entry was copied
-						if ((ppu->secondOAMptr++ & 0b11) == 0) {
+						if ((ppu->secondOAMptr & 0b11) == 0) {
 							// TODO this is never reached ?
 							ppu->spriteInRange = false;
 							ppu->sprCount++;
@@ -491,11 +498,12 @@ extern inline void tickPPU(PPU *ppu) {
 								ppu->registers[OAMADDR] &= 0b11111100;
 						}
 					} else {
-						if (ppu->sprCount < 8) ppu->secondOAM[ppu->secondOAMptr] = ppu->registers[OAMDATA];
-						// else ppu->secondOAM[ppu->secondOAMptr]; // Dummy read for future logging
+						if (ppu->sprCount < 7)
+							ppu->secondOAM[ppu->secondOAMptr] = ppu->registers[OAMDATA];
+						// else ppu->secondOAM[ppu->secondOAMptr]; // TODO Dummy read for future logging
 
 						// Current sprite's Y position is in range for the next scanline
-						if (ppu->registers[OAMDATA] >= ppu->scanline && ppu->registers[OAMDATA] < ppu->scanline + (ppu->registers[PPUCTRL] & CTRL_SPRSIZE ? 16 : 8)) {
+						if (ppu->scanline >= ppu->registers[OAMDATA] && ppu->scanline < ppu->registers[OAMDATA] + (ppu->registers[PPUCTRL] & CTRL_SPRSIZE ? 16 : 8)) {
 							ppu->spriteInRange = true;
 							ppu->secondOAMptr++;
 							ppu->registers[OAMADDR]++;
@@ -509,9 +517,9 @@ extern inline void tickPPU(PPU *ppu) {
 							ppu->registers[OAMADDR] += 4;
 
 							// Sprite overflow bug : both the attribute and the current sprite are incremented, without carry
-							if (ppu->sprCount >= 8 && (ppu->registers[OAMADDR] & 0b11) != 0b11) {
+							if (ppu->sprCount >= 8 && (ppu->registers[OAMADDR] & 0b11) != 0b11)
 								ppu->registers[OAMADDR]++;
-							} else
+							else
 								ppu->registers[OAMADDR] &= 0b11111100;
 						}
 					}
@@ -552,16 +560,18 @@ extern inline void tickPPU(PPU *ppu) {
 				ppu->registers[OAMADDR] = 0;
 			}
 
-			// TODO disable sprite eval during rendering
+			// TODO disable sprite eval during forced blanking
 			// Sprite evaluation & tile fetching
-			uint8_t currentOAM = (ppu->pixel - 1) & 0b00111111;
-			switch (currentOAM & 0b111) {
+			const uint8_t currentOAM = ((ppu->pixel - 1) & 0b11) | (((ppu->pixel - 1) >> 1) & 0b11100);
+			const uint8_t currentSprite = ((ppu->pixel - 1) >> 3) & 0b111;
+			switch ((ppu->pixel - 1) & 0b111) {
 				case 0b000:
 					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM];
 					ppu->sprPatternIndex = ppu->scanline - ppu->registers[OAMDATA];
 					PUTADDRBUS(ppu, NAMETABLEADDR(ppu));
-					if (ppu->pixel == 257)
+					if (ppu->pixel == 257) {
 						feedShiftRegisters(ppu);
+					}
 					break;
 				case 0b001:
 					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM];
@@ -570,39 +580,40 @@ extern inline void tickPPU(PPU *ppu) {
 					break;
 				case 0b010:
 					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM];
-					ppu->sprAttributes[currentOAM >> 3] = ppu->registers[OAMDATA];
+					ppu->sprAttributes[currentSprite] = ppu->registers[OAMDATA];
 					if (ppu->registers[OAMDATA] & SPR_VERTSYMMETRY)
-						ppu->sprPatternIndex = (ppu->sprPatternIndex & 0b111111110000) | ~(ppu->sprPatternIndex & 0b1111); // Vertical symmetry, if applicable
+						// TODO maybe add macros for those pattern bitmaps ?
+						ppu->sprPatternIndex = (ppu->sprPatternIndex & 0b111111111000) | ~(ppu->sprPatternIndex & 0b111); // Vertical symmetry, if applicable
 					PUTADDRBUS(ppu, ATTRIBUTEADDR(ppu));
 					break;
 				case 0b011:
 					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM];
-					ppu->sprXPos[currentOAM >> 3] = ppu->registers[OAMDATA];
+					ppu->sprXPos[currentSprite] = ppu->registers[OAMDATA];
 					readAddressPPU(ppu, ATTRIBUTEADDR(ppu));
 					break;
 				case 0b100:
-					ppu->registers[OAMDATA] = ppu->secondOAM[(currentOAM & 0b111000) | 0b000011];
+					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM | 0b11];
 					PUTADDRBUS(ppu, SPRPATTERNADDR(ppu));
 					break;
 				case 0b101:
-					ppu->registers[OAMDATA] = ppu->secondOAM[(currentOAM & 0b111000) | 0b000011];
-					ppu->sprPatternLow[currentOAM >> 3] = readAddressPPU(ppu, SPRPATTERNADDR(ppu));
-					if (currentOAM >> 3 >= ppu->sprCount)
-						ppu->sprPatternLow[currentOAM >> 3] = 0x00;
-					else if (ppu->sprAttributes[currentOAM >> 3] & SPR_HORSYMMETRY)
-						ppu->sprPatternHigh[currentOAM >> 3] = flipByte(ppu->sprPatternHigh[currentOAM >> 3]);
+					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM | 0b11];
+					ppu->sprPatternLow[currentSprite] = readAddressPPU(ppu, SPRPATTERNADDR(ppu));
+					if (currentSprite >= ppu->sprCount) {
+						ppu->sprPatternLow[currentSprite] = 0x00;
+					} else if (ppu->sprAttributes[currentSprite] & SPR_HORSYMMETRY)
+						ppu->sprPatternLow[currentSprite] = flipByte(ppu->sprPatternLow[currentSprite]);
 					break;
 				case 0b110:
-					ppu->registers[OAMDATA] = ppu->secondOAM[(currentOAM & 0b111000) | 0b000011];
+					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM | 0b11];
 					PUTADDRBUS(ppu, 0b1000 | SPRPATTERNADDR(ppu));
 					break;
 				case 0b111:
-					ppu->registers[OAMDATA] = ppu->secondOAM[(currentOAM & 0b111000) | 0b000011];
-					ppu->sprPatternHigh[currentOAM >> 3] = readAddressPPU(ppu, 0b1000 | SPRPATTERNADDR(ppu));
-					if (currentOAM >> 3 >= ppu->sprCount)
-						ppu->sprPatternHigh[currentOAM >> 3] = 0x00;
-					else if (ppu->sprAttributes[currentOAM >> 3] & SPR_HORSYMMETRY)
-						ppu->sprPatternHigh[currentOAM >> 3] = flipByte(ppu->sprPatternHigh[currentOAM >> 3]);
+					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM | 0b11];
+					ppu->sprPatternHigh[currentSprite] = readAddressPPU(ppu, 0b1000 | SPRPATTERNADDR(ppu));
+					if (currentSprite >= ppu->sprCount)
+						ppu->sprPatternHigh[currentSprite] = 0x00;
+					else if (ppu->sprAttributes[currentSprite] & SPR_HORSYMMETRY)
+						ppu->sprPatternHigh[currentSprite] = flipByte(ppu->sprPatternHigh[currentSprite]);
 					break;
 			}
 

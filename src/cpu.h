@@ -10,6 +10,15 @@
 #define DBG_REDUCED 1
 #define DBG_FULL 2
 
+#define DMA_NONE 0
+#define DMA_WAIT 1
+#define DMA_READ 2
+#define DMA_WRITE 3
+
+#define OAMDMA 0x4014
+#define JOY1 0x4016
+#define JOY2 0x4017
+
 #define RESET_VECTOR 0xFFFC
 #define RESET_STEP 0xF0
 #define NMI_VECTOR 0xFFFA
@@ -67,6 +76,9 @@ typedef struct {
 	bool prevNMI;
 	bool nextIsNMI;
 
+	uint8_t OAMDMAstatus;
+	uint8_t OAMDMApage;
+
 	uint8_t internalRAM[0x0800];
 
 	PPU *ppu;
@@ -78,6 +90,7 @@ typedef struct {
 	char rw;
 	uint16_t addressPins;
 	uint8_t dataPins;
+	uint64_t cycleCount;
 } CPU;
 
 // Interface functions
@@ -132,14 +145,18 @@ const char instructions[256][8] = {
 };
 
 extern inline uint8_t read(CPU *cpu, uint16_t address) {
-	// TODO this
 	if (address < 0x2000)
 		cpu->dataPins = cpu->internalRAM[address & 0x7FF];
 	else if (address < 0x4000)
 		cpu->dataPins = readRegisterPPU(cpu->ppu, address);
-	else if (address < 4020)
-		cpu->dataPins = 0x00;
-	else 
+	else if (address < 0x4020)
+		switch (address) {
+			case OAMDMA: cpu->dataPins = 0x00; break;
+			case JOY1: cpu->dataPins = 0x00; break;
+			case JOY2: cpu->dataPins = 0x00; break;
+			default: cpu->dataPins = 0x00; break;
+		}
+	else
 		cpu->dataPins = cartReadCPU(cpu->ppu->cart, address);
 
 	cpu->rw = READ;
@@ -149,12 +166,24 @@ extern inline uint8_t read(CPU *cpu, uint16_t address) {
 }
 
 extern inline void write(CPU *cpu, uint16_t address, uint8_t data) {
-	// TODO this
 	if (address < 0x2000)
 		cpu->internalRAM[address & 0x7FF] = data;
 	else if (address < 0x4000)
 		writeRegisterPPU(cpu->ppu, address, data);
-	else if (address >= 0x4020)
+	else if (address < 0x4020)
+		switch (address) {
+			case OAMDMA:
+				if (cpu->OAMDMAstatus == DMA_WAIT && (cpu->cycleCount & 0b1) == 1)
+					cpu->OAMDMAstatus = DMA_READ;
+				else
+					cpu->OAMDMAstatus = DMA_WAIT;
+				cpu->OAMDMApage = data;
+				break;
+			case JOY1: break;
+			case JOY2: break;
+			default: break;
+		}
+	else
 		cartWriteCPU(cpu->ppu->cart, address, data);
 	
 	cpu->rw = WRITE;
@@ -278,11 +307,16 @@ void initCPU(CPU *cpu, PPU *ppu) {
 	for (int i = 0; i < 0x800; i++)
 		cpu->internalRAM[i] = 0x00;
 
+	cpu->OAMDMAstatus = DMA_NONE;
+	cpu->OAMDMApage = 0x00;
+
 	cpu->debugLog = DBG_NONE;
 	cpu->logFile = NULL;
+
 	cpu->addressPins = 0x0000;
 	cpu->dataPins = 0x00;
 	cpu->rw = '?';
+	cpu->cycleCount = 0;
 }
 
 extern inline void pollInterrupts(CPU *cpu) {
@@ -316,10 +350,35 @@ extern inline void tickCPU(CPU *cpu) {
 		cpu->step = IRQ_STEP;
 		cpu->nextIsIRQ = false;
 	}
+	
+	if (cpu->OAMDMAstatus > DMA_WAIT) {
 
-	if (cpu->step == 0) {
-		cpu->IR = fetch(cpu);
+		if (cpu->OAMDMAstatus == DMA_READ) {
+			cpu->B = read(cpu, (cpu->OAMDMApage << 8) | cpu->DPL);
+			cpu->OAMDMAstatus = DMA_WRITE;
+		} else {
+			writeRegisterPPU(cpu->ppu, OAMDATA, cpu->B);
+			cpu->DPL++;
+			if (cpu->DPL == 0) cpu->OAMDMAstatus = DMA_NONE;
+			else cpu->OAMDMAstatus = DMA_READ;
+		}
+		cpu->step--;
+
+	} else if (cpu->step == 0) {
+		// Every write cycle (how OAMDMAstatus becomes DMA_WAIT) is either followed by another write cycle in RMW instructions (which the DMA lets execute) or by an opcode fetch, which the DMA hijacks.
+		if (cpu->OAMDMAstatus != DMA_WAIT)
+			cpu->IR = fetch(cpu);
+		else {
+			cpu->DPL = 0x00;
+			cpu->step--;
+			read(cpu, PROGCOUNTER(cpu)); // Dummy read
+
+			if ((cpu->cycleCount & 0b1) == 1)
+				// This will cause the first read to start on an even cycle. For DMA, those are all 'get' cycles, while odd ones are 'put' cycles.
+				cpu->OAMDMAstatus = DMA_READ;
+		}
 	} else {
+
 		switch ((cpu->step << 8) | cpu->IR) {
 			// Because the micro-instruction step counter will never exceed 3 bits in width, all cases setting a bit 3-7 will never occur during execution and can be used for other micro-instructions, such as interrupt sequences
 			// RESET
@@ -1677,6 +1736,7 @@ extern inline void tickCPU(CPU *cpu) {
 	}
 
 	cpu->step++;
+	cpu->cycleCount++;
 }
 
 #undef DATAPTR
