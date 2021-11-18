@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include "ppu.h"
+#include "input.h"
 
 #define DBG_NONE 0
 #define DBG_REDUCED 1
@@ -82,6 +83,7 @@ typedef struct {
 	uint8_t internalRAM[0x0800];
 
 	PPU *ppu;
+	Port *ports[2];
 
 	// Debug information
 	int debugLog;
@@ -94,7 +96,7 @@ typedef struct {
 } CPU;
 
 // Interface functions
-void initCPU(CPU *cpu, PPU *ppu);
+void initCPU(CPU *cpu, PPU *ppu, Port ports[2]);
 extern inline void pollInterrupts(CPU *cpu);
 extern inline void tickCPU(CPU *cpu);
 void setLogCPU(CPU *cpu, int logOption, FILE *logFile);
@@ -145,6 +147,7 @@ const char instructions[256][8] = {
 };
 
 extern inline uint8_t read(CPU *cpu, uint16_t address) {
+	// TODO deal with open buses
 	if (address < 0x2000)
 		cpu->dataPins = cpu->internalRAM[address & 0x7FF];
 	else if (address < 0x4000)
@@ -152,8 +155,8 @@ extern inline uint8_t read(CPU *cpu, uint16_t address) {
 	else if (address < 0x4020)
 		switch (address) {
 			case OAMDMA: cpu->dataPins = 0x00; break;
-			case JOY1: cpu->dataPins = 0x00; break;
-			case JOY2: cpu->dataPins = 0x00; break;
+			case JOY1:
+			case JOY2: cpu->dataPins = readController(cpu->ports[address - JOY1]); break;
 			default: cpu->dataPins = 0x00; break;
 		}
 	else
@@ -179,8 +182,8 @@ extern inline void write(CPU *cpu, uint16_t address, uint8_t data) {
 					cpu->OAMDMAstatus = DMA_WAIT;
 				cpu->OAMDMApage = data;
 				break;
-			case JOY1: break;
-			case JOY2: break;
+			case JOY1:
+			case JOY2: writeController(cpu->ports[0], data); writeController(cpu->ports[1], data); break;
 			default: break;
 		}
 	else
@@ -291,7 +294,7 @@ extern inline void checkInterrupts(CPU *cpu) {
 
 
 // Interface functions
-void initCPU(CPU *cpu, PPU *ppu) {
+void initCPU(CPU *cpu, PPU *ppu, Port ports[2]) {
 	// Note: this is the status of the CPU BEFORE the reset sequence
 	cpu->A = cpu->X = cpu->Y = 0;
 	cpu->PCH = 0x00;
@@ -303,6 +306,8 @@ void initCPU(CPU *cpu, PPU *ppu) {
 	cpu->nextIsIRQ = cpu->nextIsNMI = false;
 	
 	cpu->ppu = ppu;
+	cpu->ports[0] = &ports[0];
+	cpu->ports[1] = &ports[1];
 
 	for (int i = 0; i < 0x800; i++)
 		cpu->internalRAM[i] = 0x00;

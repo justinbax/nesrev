@@ -89,11 +89,22 @@ int main(int argc, char *argv[]) {
 		return -0x06;
 	}
 
+	// Default key scancodes for standard controller setup
+	int keys[8] = {
+		GLFW_KEY_SPACE, GLFW_KEY_LEFT_SHIFT, // A, B mapped to Space, LShift
+		GLFW_KEY_BACKSPACE, GLFW_KEY_ENTER, // SELECT, START mapped to Backspace, Enter
+		GLFW_KEY_W, GLFW_KEY_S, // UP, DOWN mapped to W, S
+		GLFW_KEY_A, GLFW_KEY_D // LEFT, RIGHT mapped to A, S
+	};
+
 	CPU cpu;
 	PPU ppu;
+	Port ports[2];
 
-	powerUpPPU(&ppu, colors, &cart);
-	initCPU(&cpu, &ppu);
+	initPort(&ports[0], PORT_STDCONTROLLER, window, keys, 8);
+	initPort(&ports[1], PORT_NONE, window, NULL, 0);
+	initPPU(&ppu, colors, &cart);
+	initCPU(&cpu, &ppu, ports);
 
 	// Debug logging
 	// TODO remove this
@@ -102,6 +113,7 @@ int main(int argc, char *argv[]) {
 		printf("Fatal error : can't open / create log file.\n");
 		return -0x07;
 	}
+	setLogCPU(&cpu, DBG_FULL, logFile);
 
 	// TODO very dangerous, just for test purposes
 	// TODO unsigned and const things are just a mess
@@ -138,6 +150,9 @@ int main(int argc, char *argv[]) {
 
 		glfwPollEvents();
 	}
+
+	fclose(logFile);
+	free(colors);
 
 	terminateContext(context);
 	glfwTerminate();

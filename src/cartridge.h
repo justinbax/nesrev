@@ -3,8 +3,14 @@
 
 #include <stdint.h>
 
+#define MIRROR_UNKNOWN 0
+#define MIRROR_HORIZONTAL 1
+#define MIRROR_VERTICAL 2
+#define MIRROR_4SCREEN 3
+
 typedef struct {
 	uint16_t mapperID;
+	uint8_t mirroringType;
 
 	uint8_t internalVRAM[0x07FF];
 

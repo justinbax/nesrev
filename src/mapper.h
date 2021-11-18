@@ -13,20 +13,32 @@ extern inline void cartWriteCPU(Cartridge *cart, uint16_t address, uint16_t valu
 
 // TODO deal with ROM vs RAM
 
+#define MIRROR_HORZ_ADDR(address) (address & 0x7FF)
+#define MIRROR_VERT_ADDR(address) ((address & 0x3FF) | ((address >> 1) & 0x400))
+
 extern inline uint8_t cartReadPPU(Cartridge *cart, uint16_t address) {
 	// TODO this
 	// TODO assuming NROM with horizontal mirroring
-	if (address >= 0x2000)
-		return cart->internalVRAM[(address & 0x3FF) | ((address >> 1) & 0x400)];
+	if (address >= 0x2000) {
+		if (cart->mirroringType == MIRROR_HORIZONTAL)
+			return cart->internalVRAM[MIRROR_HORZ_ADDR(address)];
+		else if (cart->mirroringType == MIRROR_VERTICAL)
+			return cart->internalVRAM[MIRROR_VERT_ADDR(address)];
+		// TODO 4 screen
+	}
 	return cart->CHR[address];
 }
 
 extern inline void cartWritePPU(Cartridge *cart, uint16_t address, uint16_t value) {
 	// TODO this
 	// TODO assuming NROM with horizontal mirroring
-	if (address >= 0x2000)
-		cart->internalVRAM[(address & 0x3FF) | ((address >> 1) & 0x400)] = value;
-	else cart->CHR[address] = value;
+	if (address >= 0x2000) {
+		if (cart->mirroringType == MIRROR_HORIZONTAL)
+			cart->internalVRAM[MIRROR_HORZ_ADDR(address)] = value;
+		else if (cart->mirroringType == MIRROR_VERTICAL)
+			cart->internalVRAM[MIRROR_VERT_ADDR(address)] = value;
+		// TODO 4 screen
+	} else cart->CHR[address] = value;
 }
 
 extern inline uint8_t cartReadCPU(Cartridge *cart, uint16_t address) {

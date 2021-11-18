@@ -107,7 +107,7 @@ typedef struct {
 
 
 // Interface functions
-void powerUpPPU(PPU *ppu, uint8_t *framebuffer, Cartridge *cart);
+void initPPU(PPU *ppu, uint8_t *framebuffer, Cartridge *cart);
 extern inline void tickPPU(PPU *ppu);
 extern inline uint8_t readRegisterPPU(PPU *ppu, uint16_t reg);
 extern inline void writeRegisterPPU(PPU *ppu, uint16_t reg, uint8_t value);
@@ -253,7 +253,7 @@ extern inline uint8_t flipByte(uint8_t value) {
 
 
 // Interface functions
-void powerUpPPU(PPU *ppu, uint8_t *framebuffer, Cartridge *cart) {
+void initPPU(PPU *ppu, uint8_t *framebuffer, Cartridge *cart) {
 	// This emulates the PPU behaviour when it is first powered up after being off for some time. This is NOT perfectly good emulation for its behaviour on reset or on bootup when the NES was just recently turned off.
 	// The main differences between power and reset are various registers working immediately and their content 
 	ppu->dataBusCPU = 0;

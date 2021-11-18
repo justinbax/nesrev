@@ -28,6 +28,10 @@ int loadROMFromFile(Cartridge *cart, const char *path) {
 	cart->mapperID = flags[6] >> 4;
 	cart->mapperID |= flags[7] & 0b11110000;
 
+	cart->mirroringType = (flags[6] & HEADER6_MIRRORING ? MIRROR_VERTICAL : MIRROR_HORIZONTAL);
+	if (flags[6] & HEADER6_4SCREEN)
+		cart->mirroringType = MIRROR_4SCREEN;
+
 	// TODO nametable mirroring
 
 	if (flags[6] & HEADER6_TRAINER) {
