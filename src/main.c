@@ -10,9 +10,18 @@
 #include "ppu.h"
 #include "ines.h"
 
+#ifdef _WIN32
+#include <Windows.h>
+#else
+#include <time.h>
+#endif
+
 // Number of pixels on the x and y axies
 #define HEIGHT_PIXELS 240
 #define WIDTH_PIXELS 256
+
+#define WIN32_TIMERESOLUTION 2
+#define UNIX_TIMERESOLUTION 2000
 
 // Initial window dimensions
 #define WINDOW_HEIGHT HEIGHT_PIXELS * 4
@@ -94,7 +103,7 @@ int main(int argc, char *argv[]) {
 		GLFW_KEY_SPACE, GLFW_KEY_LEFT_SHIFT, // A, B mapped to Space, LShift
 		GLFW_KEY_BACKSPACE, GLFW_KEY_ENTER, // SELECT, START mapped to Backspace, Enter
 		GLFW_KEY_W, GLFW_KEY_S, // UP, DOWN mapped to W, S
-		GLFW_KEY_A, GLFW_KEY_D // LEFT, RIGHT mapped to A, S
+		GLFW_KEY_A, GLFW_KEY_D // LEFT, RIGHT mapped to A, D
 	};
 
 	CPU cpu;
@@ -113,7 +122,7 @@ int main(int argc, char *argv[]) {
 		printf("Fatal error : can't open / create log file.\n");
 		return -0x07;
 	}
-	setLogCPU(&cpu, DBG_FULL, logFile);
+	setLogCPU(&cpu, DBG_NONE, logFile);
 
 	// TODO very dangerous, just for test purposes
 	// TODO unsigned and const things are just a mess
@@ -121,35 +130,51 @@ int main(int argc, char *argv[]) {
 	loadPalette(&ppu, palette);
 	free(palette);
 
-	double previousTime = glfwGetTime();
 	double frameDuration = 1.0f / 60;
+	double frameStart = glfwGetTime();
+
+#ifdef _WIN32
+	timeBeginPeriod(2);
+#endif
 
 	while (!glfwWindowShouldClose(window)) {
-		// TODO very inefficient (no CPU sleep)
-		double currentTime = glfwGetTime();
-		if (currentTime > previousTime + frameDuration) {
-			previousTime = currentTime;
+
+		if (glfwGetTime() - frameStart >= frameDuration) {
+			frameStart = glfwGetTime();
 			for (int i = 0; i < 29780; i++) {
 				// TODO the CPU / PPU alignment is weird
 				tickPPU(&ppu);
 				tickPPU(&ppu);
-
 				// PHI2
 				cpu.NMIPin = ppu.outInterrupt;
 				pollInterrupts(&cpu);
-
 				tickPPU(&ppu);
 				// PHI1
 				tickCPU(&cpu);
 			}
-			
+
 			draw(context, WIDTH_PIXELS, HEIGHT_PIXELS, colors);
-
 			glfwSwapBuffers(window);
-		}
+			glfwPollEvents();
 
-		glfwPollEvents();
+#ifdef _WIN32
+			while (frameDuration - (glfwGetTime() - frameStart) > 4.0f / 1000) {
+				// Sleep by 2ms intervals while there is less than 4ms to wait
+				// TODO make this variable
+				Sleep(WIN32_TIMERESOLUTION);
+			}
+#else
+			while (frameDuration - (glfwGetTime() - frameStart) > 5.0f / 1000) {
+				// For now, same as Windows
+				nanosleep(UNIX_TIMERESOLUTION);
+			}
+#endif
+		}
 	}
+
+#ifdef _WIN32
+	timeEndPeriod(WIN32_TIMERESOLUTION);
+#endif
 
 	fclose(logFile);
 	free(colors);

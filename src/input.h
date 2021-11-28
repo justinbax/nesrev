@@ -7,7 +7,7 @@
 #include "GLFW/glfw3.h"
 
 #define PORT_NONE 0
-#define PORT_STDCONTROLLER 1 
+#define PORT_STDCONTROLLER 1
 
 #define PORT_STROBE 0b1
 
@@ -72,8 +72,6 @@ void writeController(Port *port, uint8_t data) {
 		for (int i = 0; i < port->keyCount; i++) {
 			port->reg |= (glfwGetKey(port->window, port->keys[i]) << i);
 		}
-
-		port->currentKey = 0;
 	}
 
 	port->control = data;

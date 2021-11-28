@@ -52,16 +52,17 @@ int loadROMFromFile(Cartridge *cart, const char *path) {
 		return -0x04;
 	}
 
-	if (fread(cart->PRG, sizeof(uint8_t), cart->PRGsize, input) != cart->PRGsize) {
-		free(cart->PRG);
-		free(cart->CHR);
-		fclose(input);
-		return -0x02;
-	} else if (fread(cart->CHR, sizeof(uint8_t), cart->CHRsize, input) != cart->CHRsize) {
+	uint8_t status = (fread(cart->PRG, sizeof(uint8_t), cart->PRGsize, input) != cart->PRGsize);
+	status |= (fread(cart->CHR, sizeof(uint8_t), cart->CHRsize, input) != cart->CHRsize);
+
+	if (status) {
 		free(cart->PRG);
 		free(cart->CHR);
 		fclose(input);
 		return -0x02;
 	}
+
+	fclose(input);
+
 	return 0x00;
 }

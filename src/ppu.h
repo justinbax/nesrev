@@ -150,9 +150,9 @@ extern inline void writeAddressPPU(PPU *ppu, uint16_t address, uint8_t value) {
 		if ((address & 0b11) == 0)
 			ppu->palettes[address & 0x0F] = value;
 		ppu->palettes[address & 0x1F] = value;
-	}
-	else
+	} else {
 		cartWritePPU(ppu->cart, (address & 0b11111100000000) | ppu->addressBusLatch, value);
+	}
 }
 
 extern inline void shiftRegistersPPU(PPU *ppu) {
@@ -234,10 +234,11 @@ extern inline void renderPixel(PPU *ppu) {
 	else if (sprColor && (!bgColor || !(attributes & SPR_PRIORITY)))
 		paletteIndex = sprColor | 0b10000;
 
+	// Weird palette mirroring
 	if ((paletteIndex & 0b11) == 0)
 		paletteIndex &= 0b01111;
 
-	// Render with greyscale, if specified in PPUMASK
+	// Render with greyscale accprding to PPUMASK
 	ppu->framebuffer[framebufferIndex] = ppu->colors[ppu->palettes[paletteIndex] & (ppu->registers[PPUMASK] & 0b1 ? 0x30 : 0x3F)][0];
 	ppu->framebuffer[framebufferIndex + 1] = ppu->colors[ppu->palettes[paletteIndex] & (ppu->registers[PPUMASK] & 0b1 ? 0x30 : 0x3F)][1];
 	ppu->framebuffer[framebufferIndex + 2] = ppu->colors[ppu->palettes[paletteIndex] & (ppu->registers[PPUMASK] & 0b1 ? 0x30 : 0x3F)][2];
@@ -566,6 +567,7 @@ extern inline void tickPPU(PPU *ppu) {
 			const uint8_t currentSprite = ((ppu->pixel - 1) >> 3) & 0b111;
 			switch ((ppu->pixel - 1) & 0b111) {
 				case 0b000:
+					// Sprite Y position and garbage nametable
 					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM];
 					ppu->sprPatternIndex = ppu->scanline - ppu->registers[OAMDATA];
 					PUTADDRBUS(ppu, NAMETABLEADDR(ppu));
@@ -574,11 +576,13 @@ extern inline void tickPPU(PPU *ppu) {
 					}
 					break;
 				case 0b001:
+					// Sprite index and garbage nametable
 					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM];
 					ppu->sprPatternIndex |= ppu->registers[OAMDATA] << 4;
 					readAddressPPU(ppu, NAMETABLEADDR(ppu));
 					break;
 				case 0b010:
+					// Sprite attributes and garbage attribute table
 					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM];
 					ppu->sprAttributes[currentSprite] = ppu->registers[OAMDATA];
 					if (ppu->registers[OAMDATA] & SPR_VERTSYMMETRY)
@@ -587,33 +591,38 @@ extern inline void tickPPU(PPU *ppu) {
 					PUTADDRBUS(ppu, ATTRIBUTEADDR(ppu));
 					break;
 				case 0b011:
+					// Sprite X position and garbage attribute table
 					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM];
 					ppu->sprXPos[currentSprite] = ppu->registers[OAMDATA];
 					readAddressPPU(ppu, ATTRIBUTEADDR(ppu));
 					break;
 				case 0b100:
+					// Garbage OAM read and sprite pattern fetch
 					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM | 0b11];
 					PUTADDRBUS(ppu, SPRPATTERNADDR(ppu));
 					break;
 				case 0b101:
+					// Garbage OAM read and sprite pattern fetch
 					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM | 0b11];
 					ppu->sprPatternLow[currentSprite] = readAddressPPU(ppu, SPRPATTERNADDR(ppu));
-					if (currentSprite >= ppu->sprCount) {
+					if (currentSprite >= ppu->sprCount)
 						ppu->sprPatternLow[currentSprite] = 0x00;
-					} else if (ppu->sprAttributes[currentSprite] & SPR_HORSYMMETRY)
-						ppu->sprPatternLow[currentSprite] = flipByte(ppu->sprPatternLow[currentSprite]);
+					else if (ppu->sprAttributes[currentSprite] & SPR_HORSYMMETRY)
+						ppu->sprPatternLow[currentSprite] = flipByte(ppu->sprPatternLow[currentSprite]); // Horizontal symmetry, if applicable
 					break;
 				case 0b110:
+					// Garbage OAM read and sprite high pattern fetch
 					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM | 0b11];
 					PUTADDRBUS(ppu, 0b1000 | SPRPATTERNADDR(ppu));
 					break;
 				case 0b111:
+					// Garbage OAM read and sprite high pattern fetch
 					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM | 0b11];
 					ppu->sprPatternHigh[currentSprite] = readAddressPPU(ppu, 0b1000 | SPRPATTERNADDR(ppu));
 					if (currentSprite >= ppu->sprCount)
 						ppu->sprPatternHigh[currentSprite] = 0x00;
 					else if (ppu->sprAttributes[currentSprite] & SPR_HORSYMMETRY)
-						ppu->sprPatternHigh[currentSprite] = flipByte(ppu->sprPatternHigh[currentSprite]);
+						ppu->sprPatternHigh[currentSprite] = flipByte(ppu->sprPatternHigh[currentSprite]); // Horizontal symmetry, if applicable
 					break;
 			}
 

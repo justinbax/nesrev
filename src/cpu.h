@@ -701,7 +701,7 @@ extern inline void tickCPU(CPU *cpu) {
 
 			// AND_ABX
 			case 0x3D | (0b001 << 8):
-			case 0x3D | (0b010 << 8): absAddressing(cpu, cpu->X);
+			case 0x3D | (0b010 << 8): absAddressing(cpu, cpu->X); break;
 			case 0x3D | (0b011 << 8): cpu->B = read(cpu, DATAPTR(cpu)); if (cpu->DPL < cpu->X) cpu->DPH++; else {cpu->A &= cpu->B; nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu);} break;
 			case 0x3D | (0b100 << 8): cpu->A &= read(cpu, DATAPTR(cpu)); nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu); break;
 
@@ -1290,7 +1290,7 @@ extern inline void tickCPU(CPU *cpu) {
 			case 0xB9 | (0b001 << 8):
 			case 0xB9 | (0b010 << 8): absAddressing(cpu, cpu->Y); break;
 			case 0xB9 | (0b011 << 8): cpu->A = read(cpu, DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; else {nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu);} break;
-			case 0xB9 | (0b100 << 8): cpu->A = read(cpu, DATAPTR(cpu)); checkInterrupts(cpu); END(cpu); break;
+			case 0xB9 | (0b100 << 8): cpu->A = read(cpu, DATAPTR(cpu)); nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu); break;
 
 			// TSX
 			case 0xBA | (0b001 << 8): read(cpu, PROGCOUNTER(cpu)); cpu->X = cpu->SP; checkInterrupts(cpu); END(cpu); break;

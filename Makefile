@@ -19,7 +19,7 @@ LIBRARIES = glfw3 glew32 opengl32
 ifeq ($(OS),Windows_NT)
 	CCFLAGS += -DWIN32 -DGLEW_STATIC
 	LIBDIR += $(BASELIBDIR)/win32
-	LIBRARIES += gdi32
+	LIBRARIES += gdi32 winmm
 else
 	@echo Compiling for platforms other than Windows is not yet supported.
 endif
