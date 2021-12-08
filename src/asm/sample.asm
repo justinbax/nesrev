@@ -102,10 +102,11 @@ NMI:
 	sta OAMDMA
 
 	; Controller reading
-	ldx #%00000001
-	stx JOY1
-	dex
-	stx JOY1
+	lsr
+	sta JOY1
+	lsr
+	sta JOY1
+
 	ldx #$08
 ReadInput:
 	; Weird but efficient way to fit controller status in one byte

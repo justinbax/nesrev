@@ -17,7 +17,7 @@ HEADFILES = $(wildcard $(SRCDIR)/*.h)
 LIBRARIES = glfw3 glew32 opengl32
 
 ifeq ($(OS),Windows_NT)
-	CCFLAGS += -DWIN32 -DGLEW_STATIC
+	CCFLAGS += -D_WIN32 -DGLEW_STATIC
 	LIBDIR += $(BASELIBDIR)/win32
 	LIBRARIES += gdi32 winmm
 else

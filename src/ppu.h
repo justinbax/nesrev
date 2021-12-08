@@ -59,19 +59,19 @@ typedef struct {
 	uint8_t colors[64][3];
 
 	// Internal sprite evaluation counters and flags
-	uint8_t secondOAMptr;
-	bool spriteInRange;
-	uint8_t sprCount;
-	uint16_t sprPatternIndex;
-	bool sprZeroOnNext;
-	bool sprZeroOnCurrent;
+	uint8_t secondOAMptr; // Pointer to next free second OAM location / next second OAM location to be evaluated
+	bool spriteInRange; // The sprite being evaluated is on next scanline (copy it to second OAM)
+	uint8_t sprCount; // Number of sprites on next scanline
+	uint16_t sprPatternIndex; // Location of the pattern of next sprite, given by second OAM bytes 0 and 1 (final location given by SPRPATTERNADDR)
+	bool sprZeroOnNext; // Sprite zero detected to be in next scanline
+	bool sprZeroOnCurrent; // Initialized from sprZeroOnNext for current scanline
 
 	// Internal registers for fetching and rendering
-	uint16_t addressVRAM;
-	uint16_t tempAddressVRAM;
-	uint8_t readBufferVRAM;
-	uint8_t fineX;
-	bool secondWrite;
+	uint16_t addressVRAM; // Also called 'v'
+	uint16_t tempAddressVRAM; // Also called 't'
+	uint8_t readBufferVRAM; // Used in PPUDATA writes
+	uint8_t fineX; // Completes the scroll position with tempAddressVRAM
+	bool secondWrite; // Next write to PPUSCROLL or PPUADDR is the second
 
 	// Internal registers / shift registers when fetching tile data
 	uint16_t bgPatternData[2];
@@ -235,8 +235,9 @@ extern inline void renderPixel(PPU *ppu) {
 		paletteIndex = sprColor | 0b10000;
 
 	// Weird palette mirroring
-	if ((paletteIndex & 0b11) == 0)
-		paletteIndex &= 0b01111;
+	if ((paletteIndex & 0b11) == 0) {
+		paletteIndex &= 0b10000;
+	}
 
 	// Render with greyscale accprding to PPUMASK
 	ppu->framebuffer[framebufferIndex] = ppu->colors[ppu->palettes[paletteIndex] & (ppu->registers[PPUMASK] & 0b1 ? 0x30 : 0x3F)][0];
@@ -446,13 +447,13 @@ extern inline void tickPPU(PPU *ppu) {
 	// TODO the nested if/elses are quite a pain
 	if (ppu->scanline < 240 || ppu->scanline == 261) {
 		if (ppu->pixel == 0) {
-			if (ppu->scanline == 261) ppu->oddFrame = !ppu->oddFrame;
-			else renderPixel(ppu);
-
 			if (ppu->scanline == 0 && ppu->oddFrame) 
 				ppu->bgNametableLatch = readAddressPPU(ppu, NAMETABLEADDR(ppu));
 			else
 				PUTADDRBUS(ppu, BGPATTERNADDR(ppu));
+				
+			if (ppu->scanline == 261) ppu->oddFrame = !ppu->oddFrame;
+			else renderPixel(ppu);
 
 			ppu->spriteInRange = ppu->sprZeroOnNext = false;
 			ppu->secondOAMptr = ppu->sprCount = 0;
@@ -473,6 +474,7 @@ extern inline void tickPPU(PPU *ppu) {
 					if (ppu->pixel & 1) {
 						ppu->registers[OAMDATA] = ppu->OAM[ppu->registers[OAMADDR]];
 						ppu->registers[OAMADDR] &= 0b11111100;
+						// TODO fix this
 						// ppu->registers[OAMADDR] += 4;
 					} // else
 						// ppu->secondOAM[ppu->secondOAMptr]; // TODO Dummy read for future logging
@@ -510,7 +512,7 @@ extern inline void tickPPU(PPU *ppu) {
 							ppu->registers[OAMADDR]++;
 
 							// Sprite zero is the first sprite read, not necessarily the one at OAM[0]
-							if (ppu->pixel == 65) ppu->sprZeroOnNext = true;
+							if (ppu->pixel == 66) ppu->sprZeroOnNext = true;
 
 							// Sprite overflow occured
 							if (ppu->sprCount >= 8) ppu->registers[PPUSTATUS] |= STATUS_OFLOW;
@@ -554,11 +556,13 @@ extern inline void tickPPU(PPU *ppu) {
 			shiftRegistersPPU(ppu);
 
 		} else if (ppu->pixel <= 320) {
-			if (ppu->pixel >= 280 && ppu->pixel < 305 && ppu->scanline == 261 && RENDERING(ppu)) {
-				ppu->addressVRAM &= ~(VRAM_COARSEY | VRAM_FINEY | VRAM_YNAMETABLE);
-				ppu->addressVRAM |= ppu->tempAddressVRAM & (VRAM_COARSEY | VRAM_FINEY | VRAM_YNAMETABLE);
+			if (ppu->pixel >= 280 && ppu->pixel < 305 && RENDERING(ppu)) {
 				ppu->sprZeroOnCurrent = ppu->sprZeroOnNext;
 				ppu->registers[OAMADDR] = 0;
+				if (ppu->scanline == 261) {
+					ppu->addressVRAM &= ~(VRAM_COARSEY | VRAM_FINEY | VRAM_YNAMETABLE);
+					ppu->addressVRAM |= ppu->tempAddressVRAM & (VRAM_COARSEY | VRAM_FINEY | VRAM_YNAMETABLE);
+				}
 			}
 
 			// TODO disable sprite eval during forced blanking

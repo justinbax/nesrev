@@ -93,6 +93,9 @@ typedef struct {
 	uint16_t addressPins;
 	uint8_t dataPins;
 	uint64_t cycleCount;
+
+	// TODO remove this
+	bool opcodesUsed[256];
 } CPU;
 
 // Interface functions
@@ -139,7 +142,7 @@ const char instructions[256][8] = {
 	"NOP_IMM", "STA_IZX", "NOP_IMM", "SAX_IZX", "STY_ZP", "STA_ZP", "STX_ZP", "SAX_ZP", "DEY", "NOP_IMM", "TXA", "XAA_IMM", "STY_ABS", "STA_ABS", "STX_ABS", "SAX_ABS",
 	"BCC", "STA_IZY", "KIL", "AHX_IZY", "STY_ZPX", "STA_ZPX", "STX_ZPY", "SAX_ZPY", "TYA", "STA_ABY", "TXS", "TAS_ABY", "SHY_ABX", "STA_ABX", "SHX_ABY", "AHX_ABY",
 	"LDY_IMM", "LDA_IZX", "LDX_IMM", "LAX_IZX", "LDY_ZP", "LDA_ZP", "LDX_ZP", "LAX_ZP", "TAY", "LDA_IMM", "TAX", "LAX_IMM", "LDY_ABS", "LDA_ABS", "LDX_ABS", "LAX_ABS",
-	"BCS", "LDA_IZY", "KIL", "LAX_IZY", "LDY_ZPX", "LDA_ZPX", "LDX_ZPY", "LAX_ZPY", "CLV", "LDA_ABY", "TSX", "LAS_ABY", "LDY_BAX", "LDA_ABX", "LDX_ABY", "LAX_ABY",
+	"BCS", "LDA_IZY", "KIL", "LAX_IZY", "LDY_ZPX", "LDA_ZPX", "LDX_ZPY", "LAX_ZPY", "CLV", "LDA_ABY", "TSX", "LAS_ABY", "LDY_ABX", "LDA_ABX", "LDX_ABY", "LAX_ABY",
 	"CPY_IMM", "CMP_IZX", "NOP_IMM", "DCP_IZX", "CPY_ZP", "CMP_ZP", "DEC_ZP", "DCP_ZP", "INY", "CMP_IMM", "DEX", "AXS_IMM", "CPY_ABS", "CMP_ABS", "DEC_ABS", "DCP_ABS",
 	"BNE", "CMP_IZY", "KIL", "DCP_IZY", "NOP_ZPX", "CMP_ZPX", "DEC_ZPX", "DCP_ZPX", "CLD", "CMP_ABY", "NOP", "DCP_ABY", "NOP_ABX", "CMP_ABX", "DEC_ABX", "DCP_ABX",
 	"CPX_IMM", "SBC_IZX", "NOP_IMM", "ISC_IZX", "CPX_ZP", "SBC_ZP", "INC_ZP", "ISC_ZP", "INX", "SBC_IMM", "NOP", "SBC_IMM", "CPX_ABS", "SBC_ABS", "INC_ABS", "ISC_ABS",
@@ -322,6 +325,9 @@ void initCPU(CPU *cpu, PPU *ppu, Port ports[2]) {
 	cpu->dataPins = 0x00;
 	cpu->rw = '?';
 	cpu->cycleCount = 0;
+
+	for (int i = 0; i < 256; i++)
+		cpu->opcodesUsed[i] = false;
 }
 
 extern inline void pollInterrupts(CPU *cpu) {
@@ -371,9 +377,13 @@ extern inline void tickCPU(CPU *cpu) {
 
 	} else if (cpu->step == 0) {
 		// Every write cycle (how OAMDMAstatus becomes DMA_WAIT) is either followed by another write cycle in RMW instructions (which the DMA lets execute) or by an opcode fetch, which the DMA hijacks.
-		if (cpu->OAMDMAstatus != DMA_WAIT)
+		if (cpu->OAMDMAstatus != DMA_WAIT) {
 			cpu->IR = fetch(cpu);
-		else {
+			if (!cpu->opcodesUsed[cpu->IR]) {
+				cpu->opcodesUsed[cpu->IR] = true;
+				printf("%04X : %s\n", PROGCOUNTER(cpu), instructions[cpu->IR]);
+			}
+		} else {
 			cpu->DPL = 0x00;
 			cpu->step--;
 			read(cpu, PROGCOUNTER(cpu)); // Dummy read
@@ -805,7 +815,7 @@ extern inline void tickCPU(CPU *cpu) {
 			case 0x51 | (0b001 << 8):
 			case 0x51 | (0b010 << 8):
 			case 0x51 | (0b011 << 8): izyAddressing(cpu); break;
-			case 0x51 | (0b100 << 8): cpu->B = read(cpu, DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; else {cpu->A |= cpu->B; nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu);} break;
+			case 0x51 | (0b100 << 8): cpu->B = read(cpu, DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; else {cpu->A ^= cpu->B; nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu);} break;
 			case 0x51 | (0b101 << 8): cpu->A ^= read(cpu, DATAPTR(cpu)); nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu); break;
 
 			// SRE_IZY
@@ -1254,14 +1264,14 @@ extern inline void tickCPU(CPU *cpu) {
 			case 0xB1 | (0b010 << 8):
 			case 0xB1 | (0b011 << 8): izyAddressing(cpu); break;
 			case 0xB1 | (0b100 << 8): cpu->A = read(cpu, DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; else {nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu);} break;
-			case 0xB1 | (0b101 << 8): cpu->A = read(cpu, DATAPTR(cpu)); nzFlags(cpu, cpu->A); END(cpu); break;
+			case 0xB1 | (0b101 << 8): cpu->A = read(cpu, DATAPTR(cpu)); nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu); break;
 
 			// LAX_IZY
 			case 0xB3 | (0b001 << 8):
 			case 0xB3 | (0b010 << 8):
 			case 0xB3 | (0b011 << 8): izyAddressing(cpu); break;
 			case 0xB3 | (0b100 << 8): cpu->X = read(cpu, DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; else {cpu->A = cpu->X; nzFlags(cpu, cpu->X); checkInterrupts(cpu); END(cpu);} break;
-			case 0xB3 | (0b101 << 8): cpu->A = cpu->X; nzFlags(cpu, cpu->X); checkInterrupts(cpu); END(cpu); break;
+			case 0xB3 | (0b101 << 8): cpu->X = read(cpu, DATAPTR(cpu)); cpu->A = cpu->X; nzFlags(cpu, cpu->X); checkInterrupts(cpu); END(cpu); break;
 			
 			// LDY_ZPX
 			case 0xB4 | (0b001 << 8):
@@ -1466,8 +1476,8 @@ extern inline void tickCPU(CPU *cpu) {
 
 			// DEC_ABX
 			case 0xDE | (0b001 << 8):
-			case 0xDE | (0b010 << 8): absAddressing(cpu, cpu->Y); break;
-			case 0xDE | (0b011 << 8): read(cpu, DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; break;
+			case 0xDE | (0b010 << 8): absAddressing(cpu, cpu->X); break;
+			case 0xDE | (0b011 << 8): read(cpu, DATAPTR(cpu)); if (cpu->DPL < cpu->X) cpu->DPH++; break;
 			case 0xDE | (0b100 << 8): cpu->B = read(cpu, DATAPTR(cpu)); break;
 			case 0xDE | (0b101 << 8): write(cpu, DATAPTR(cpu), cpu->B); cpu->B--; nzFlags(cpu, cpu->B); break;
 			case 0xDE | (0b110 << 8): write(cpu, DATAPTR(cpu), cpu->B); checkInterrupts(cpu); END(cpu); break;

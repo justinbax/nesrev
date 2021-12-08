@@ -63,6 +63,8 @@ int main(int argc, const char *argv[]) {
 	uint8_t *chr = readFile(argv[1], &chrSize);
 	uint8_t *prg = readFile(argv[2], &prgSize);
 	if (!chr || !prg) {
+		free(chr);
+		free(prg);
 		printf("Fatal error : couldn't read CHR or PRG file / out of memory.\n");
 		return -0x02;
 	}

@@ -164,7 +164,7 @@ int main(int argc, char *argv[]) {
 				Sleep(WIN32_TIMERESOLUTION);
 			}
 #else
-			while (frameDuration - (glfwGetTime() - frameStart) > 5.0f / 1000) {
+			while (frameDuration - (glfwGetTime() - frameStart) > 4.0f / 1000) {
 				// For now, same as Windows
 				nanosleep(UNIX_TIMERESOLUTION);
 			}

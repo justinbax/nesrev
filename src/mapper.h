@@ -13,8 +13,8 @@ extern inline void cartWriteCPU(Cartridge *cart, uint16_t address, uint16_t valu
 
 // TODO deal with ROM vs RAM
 
-#define MIRROR_HORZ_ADDR(address) (address & 0x7FF)
-#define MIRROR_VERT_ADDR(address) ((address & 0x3FF) | ((address >> 1) & 0x400))
+#define MIRROR_HORZ_ADDR(address) ((address & 0x3FF) | ((address >> 1) & 0x400))
+#define MIRROR_VERT_ADDR(address) (address & 0x7FF)
 
 extern inline uint8_t cartReadPPU(Cartridge *cart, uint16_t address) {
 	// TODO this
