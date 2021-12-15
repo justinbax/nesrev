@@ -133,7 +133,7 @@ extern inline void checkInterrupts(CPU *cpu);
 const char instructions[256][8] = {
 	"BRK", "ORA_IZX", "KIL", "SLO_IZX", "NOP_ZP", "ORA_ZP", "ASL_ZP", "SLO_ZP", "PHP", "ORA_IMM", "ASL", "ANC_IMM", "NOP_ABS", "ORA_ABS", "ASL_ABS", "SLO_ABS",
 	"BPL", "ORA_IZY", "KIL", "SLO_IZY", "NOP_ZPX", "ORA_ZPX", "ASL_ZPX", "SLO_ZPX", "CLC", "ORA_ABY", "NOP", "SLO_ABY", "NOP_ABX", "ORA_ABX", "ASL_ABX", "SLO_ABX",
-	"JSR", "AND_IZX", "KIL", "RLA_IZX", "BIT_ZP", "AND_ZP", "ROL_ZP", "RLA_ZP", "PLP", "AND_IMM", "ROL", "AND_IMM", "BIT_ABS", "AND_ABS", "ROL_ABS", "RLA_ABS",
+	"JSR", "AND_IZX", "KIL", "RLA_IZX", "BIT_ZP", "AND_ZP", "ROL_ZP", "RLA_ZP", "PLP", "AND_IMM", "ROL", "ANC_IMM", "BIT_ABS", "AND_ABS", "ROL_ABS", "RLA_ABS",
 	"BMI", "AND_IZY", "KIL", "RLA_AZY", "NOP_ZPX", "AND_ZPX", "ROL_ZPX", "RLA_ZPX", "SEC", "AND_ABY", "NOP", "RLA_ABY", "NOP_ABX", "AND_ABX", "ROL_ABX", "RLA_ABX",
 	"RTI", "EOR_IZX", "KIL", "SRE_IZX", "NOP_ZP", "EOR_ZP", "LSR_ZP", "SRE_ZP", "PHA", "EOR_IMM", "LSR", "ALR_IMM", "JMP_ABS", "EOR_ABS", "LSR_ABS", "SRE_ABS",
 	"BVC", "EOR_IZY", "KIL", "SRE_IZY", "NOP_ZPX", "EOR_ZPX", "LSR_ZPX", "SRE_ZPX", "CLI", "EOR_ABY", "NOP", "SRE_ABY", "NOP_ABX", "EOR_ABX", "LSR_ABX", "SRE_ABX",
@@ -476,7 +476,7 @@ extern inline void tickCPU(CPU *cpu) {
 			// ANC_IMM
 			case 0x0B | (0b001 << 8):
 
-			case 0x2B | (0b001 << 8): cpu->A &= fetch(cpu); cpu->carryFlag = cpu->A & 0b10000000; nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu); break;
+			case 0x2B | (0b001 << 8): cpu->A &= fetch(cpu); nzFlags(cpu, cpu->A); cpu->carryFlag = cpu->negFlag; checkInterrupts(cpu); END(cpu); break;
 
 			// ORA_ABS
 			case 0x0D | (0b001 << 8):
@@ -557,12 +557,12 @@ extern inline void tickCPU(CPU *cpu) {
 			case 0x1D | (0b001 << 8):
 			case 0x1D | (0b010 << 8): absAddressing(cpu, cpu->X); break;
 			case 0x1D | (0b011 << 8): cpu->B = read(cpu, DATAPTR(cpu)); if (cpu->DPL < cpu->X) cpu->DPH++; else {cpu->A |= cpu->B; nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu);} break;
-			case 0x1D | (0b100 << 8): cpu->A |= read(cpu, DATAPTR(cpu)); nzFlags(cpu, cpu->B); checkInterrupts(cpu); END(cpu); break;
+			case 0x1D | (0b100 << 8): cpu->A |= read(cpu, DATAPTR(cpu)); nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu); break;
 
 			// ASL_ABX
 			case 0x1E | (0b001 << 8):
 			case 0x1E | (0b010 << 8): absAddressing(cpu, cpu->X); break;
-			case 0x1E | (0b011 << 8): cpu->B = read(cpu, DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; break;
+			case 0x1E | (0b011 << 8): cpu->B = read(cpu, DATAPTR(cpu)); if (cpu->DPL < cpu->X) cpu->DPH++; break;
 			case 0x1E | (0b100 << 8): cpu->B = read(cpu, DATAPTR(cpu)); break;
 			case 0x1E | (0b101 << 8): write(cpu, DATAPTR(cpu), cpu->B); cpu->carryFlag = cpu->B & 0b10000000; cpu->B <<= 1; nzFlags(cpu, cpu->B); break;
 			case 0x1E | (0b110 << 8): write(cpu, DATAPTR(cpu), cpu->B); checkInterrupts(cpu); END(cpu); break;
@@ -600,7 +600,7 @@ extern inline void tickCPU(CPU *cpu) {
 
 			// BIT_ZP
 			case 0x24 | (0b001 << 8): cpu->DPL = fetch(cpu); break;
-			case 0x24 | (0b010 << 8): {uint8_t value = read(cpu, 0x0000 | cpu->DPL); cpu->oflowFlag = value & 0b01000000; cpu->negFlag = value & 0b10000000; cpu->zeroFlag = !(value & cpu->A);} checkInterrupts(cpu); END(cpu); break;
+			case 0x24 | (0b010 << 8): cpu->B = read(cpu, 0x0000 | cpu->DPL); cpu->oflowFlag = cpu->B & 0b01000000; cpu->negFlag = cpu->B & 0b10000000; cpu->zeroFlag = !(cpu->B & cpu->A); checkInterrupts(cpu); END(cpu); break;
 
 			// AND_ZP
 			case 0x25 | (0b001 << 8): cpu->DPL = fetch(cpu); break;
@@ -632,7 +632,7 @@ extern inline void tickCPU(CPU *cpu) {
 			// BIT_ABS
 			case 0x2C | (0b001 << 8):
 			case 0x2C | (0b010 << 8): absAddressing(cpu, 0); break;
-			case 0x2C | (0b011 << 8): {uint8_t value = read(cpu, DATAPTR(cpu)); cpu->oflowFlag = value & 0b01000000; cpu->negFlag = value & 0b10000000; cpu->zeroFlag = !(value & cpu->A);} checkInterrupts(cpu); END(cpu); break;
+			case 0x2C | (0b011 << 8): cpu->B = read(cpu, DATAPTR(cpu)); cpu->oflowFlag = cpu->B & 0b01000000; cpu->negFlag = cpu->B & 0b10000000; cpu->zeroFlag = !(cpu->B & cpu->A); checkInterrupts(cpu); END(cpu); break;
 
 			// AND_ABS
 			case 0x2D | (0b001 << 8):
@@ -933,7 +933,7 @@ extern inline void tickCPU(CPU *cpu) {
 			case 0x69 | (0b001 << 8): add(cpu, fetch(cpu)); checkInterrupts(cpu); END(cpu); break;
 
 			// ROR
-			case 0x6A | (0b001 << 8): read(cpu, PROGCOUNTER(cpu)); if (cpu->carryFlag) {cpu->carryFlag = cpu->A & 0b00000001; cpu->A >>= 1; cpu->A |= 0b10000000;} else {cpu->carryFlag = cpu->A & 0b00000001; cpu->A >>= 1;} checkInterrupts(cpu); END(cpu); break;
+			case 0x6A | (0b001 << 8): read(cpu, PROGCOUNTER(cpu)); if (cpu->carryFlag) {cpu->carryFlag = cpu->A & 0b00000001; cpu->A >>= 1; cpu->A |= 0b10000000;} else {cpu->carryFlag = cpu->A & 0b00000001; cpu->A >>= 1;} nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu); break;
 
 			// ARR_IMM
 			// TODO some sources say the V flag is set from the XOR of bit 6 and 7 of A, not bit 5 and 6
@@ -1029,8 +1029,8 @@ extern inline void tickCPU(CPU *cpu) {
 
 			// ROR_ABX
 			case 0x7E | (0b001 << 8):
-			case 0x7E | (0b010 << 8): absAddressing(cpu, cpu->Y); break;
-			case 0x7E | (0b011 << 8): read(cpu, DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; break;
+			case 0x7E | (0b010 << 8): absAddressing(cpu, cpu->X); break;
+			case 0x7E | (0b011 << 8): read(cpu, DATAPTR(cpu)); if (cpu->DPL < cpu->X) cpu->DPH++; break;
 			case 0x7E | (0b100 << 8): cpu->B = read(cpu, DATAPTR(cpu)); break;
 			case 0x7E | (0b101 << 8): write(cpu, DATAPTR(cpu), cpu->B); if (cpu->carryFlag) {cpu->carryFlag = cpu->B & 0b00000001; cpu->B >>= 1; cpu->B |= 0b10000000;} else {cpu->carryFlag = cpu->B & 0b00000001; cpu->B >>= 1;} nzFlags(cpu, cpu->B); break;
 			case 0x7E | (0b110 << 8): write(cpu, DATAPTR(cpu), cpu->B); checkInterrupts(cpu); END(cpu); break;
@@ -1061,21 +1061,20 @@ extern inline void tickCPU(CPU *cpu) {
 			case 0x84 | (0b001 << 8): cpu->DPL = fetch(cpu); break;
 			case 0x84 | (0b010 << 8): write(cpu, 0x0000 | cpu->DPL, cpu->Y); checkInterrupts(cpu); END(cpu); break;
 
-			// STY_ZP
+			// STA_ZP
 			case 0x85 | (0b001 << 8): cpu->DPL = fetch(cpu); break;
 			case 0x85 | (0b010 << 8): write(cpu, 0x0000 | cpu->DPL, cpu->A); checkInterrupts(cpu); END(cpu); break;
 
-			// STY_ZP
+			// STX_ZP
 			case 0x86 | (0b001 << 8): cpu->DPL = fetch(cpu); break;
 			case 0x86 | (0b010 << 8): write(cpu, 0x0000 | cpu->DPL, cpu->X); checkInterrupts(cpu); END(cpu); break;
 
-			// STY_ZP
+			// SAX_ZP
 			case 0x87 | (0b001 << 8): cpu->DPL = fetch(cpu); break;
 			case 0x87 | (0b010 << 8): write(cpu, 0x0000 | cpu->DPL, cpu->A & cpu->X); checkInterrupts(cpu); END(cpu); break;
 
 			// DEY
-			case 0x88 | (0b001 << 8): read(cpu, PROGCOUNTER(cpu)); cpu->Y--; nzFlags(cpu, cpu->Y); checkInterrupts(cpu); END(cpu);
-			break;
+			case 0x88 | (0b001 << 8): read(cpu, PROGCOUNTER(cpu)); cpu->Y--; nzFlags(cpu, cpu->Y); checkInterrupts(cpu); END(cpu); break;
 			
 			// TXA
 			case 0x8A | (0b001 << 8): read(cpu, PROGCOUNTER(cpu)); cpu->A = cpu->X; nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu); break;

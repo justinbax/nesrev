@@ -447,7 +447,7 @@ extern inline void tickPPU(PPU *ppu) {
 	// TODO the nested if/elses are quite a pain
 	if (ppu->scanline < 240 || ppu->scanline == 261) {
 		if (ppu->pixel == 0) {
-			if (ppu->scanline == 0 && ppu->oddFrame) 
+			if (ppu->scanline == 0 && ppu->oddFrame)
 				ppu->bgNametableLatch = readAddressPPU(ppu, NAMETABLEADDR(ppu));
 			else
 				PUTADDRBUS(ppu, BGPATTERNADDR(ppu));
@@ -589,9 +589,11 @@ extern inline void tickPPU(PPU *ppu) {
 					// Sprite attributes and garbage attribute table
 					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM];
 					ppu->sprAttributes[currentSprite] = ppu->registers[OAMDATA];
-					if (ppu->registers[OAMDATA] & SPR_VERTSYMMETRY)
+					if (ppu->registers[OAMDATA] & SPR_VERTSYMMETRY) {
 						// TODO maybe add macros for those pattern bitmaps ?
-						ppu->sprPatternIndex = (ppu->sprPatternIndex & 0b111111111000) | ~(ppu->sprPatternIndex & 0b111); // Vertical symmetry, if applicable
+						//if (currentSprite < ppu->sprCount) printf("hors %i\n", ppu->scanline);
+						ppu->sprPatternIndex = (ppu->sprPatternIndex & 0b111111111000) | (7 - (ppu->sprPatternIndex & 0b111));//~(ppu->sprPatternIndex & 0b111); // Vertical symmetry, if applicable
+					}
 					PUTADDRBUS(ppu, ATTRIBUTEADDR(ppu));
 					break;
 				case 0b011:
