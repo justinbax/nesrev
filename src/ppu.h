@@ -591,8 +591,7 @@ extern inline void tickPPU(PPU *ppu) {
 					ppu->sprAttributes[currentSprite] = ppu->registers[OAMDATA];
 					if (ppu->registers[OAMDATA] & SPR_VERTSYMMETRY) {
 						// TODO maybe add macros for those pattern bitmaps ?
-						//if (currentSprite < ppu->sprCount) printf("hors %i\n", ppu->scanline);
-						ppu->sprPatternIndex = (ppu->sprPatternIndex & 0b111111111000) | (7 - (ppu->sprPatternIndex & 0b111));//~(ppu->sprPatternIndex & 0b111); // Vertical symmetry, if applicable
+						ppu->sprPatternIndex = (ppu->sprPatternIndex & 0b111111111000) | (7 - (ppu->sprPatternIndex & 0b111)); // Vertical symmetry, if applicable
 					}
 					PUTADDRBUS(ppu, ATTRIBUTEADDR(ppu));
 					break;

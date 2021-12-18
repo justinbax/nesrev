@@ -284,7 +284,7 @@ extern inline void add(CPU *cpu, uint8_t value) {
 	// The carry flag is also set if the 8-bit result is the same but it still overflowed because of the previous carry flag (SEC + ADC $FF sets the carry flag even though the 8-bit result doesn't appear to have overflowed)
 	cpu->carryFlag = (result < cpu->A) || (result == cpu->A && cpu->carryFlag);
 	// Weird signed overflow check, used by very few programs
-	cpu->oflowFlag = (((cpu->A ^ result) & (value & result) & 0b10000000) > 0);
+	cpu->oflowFlag = (((cpu->A ^ result) & (value ^ result) & 0b10000000) > 0);
 	cpu->A = result;
 	nzFlags(cpu, cpu->A);
 }
@@ -682,8 +682,9 @@ extern inline void tickCPU(CPU *cpu) {
 			// ROL_ZPX
 			case 0x36 | (0b001 << 8):
 			case 0x36 | (0b010 << 8): zpiAddressing(cpu, cpu->X); break;
-			case 0x36 | (0b011 << 8): write(cpu, 0x0000 | cpu->DPL, cpu->B); if (cpu->carryFlag) {cpu->carryFlag = cpu->B & 0b10000000; cpu->B <<= 1; cpu->B++;} else {cpu->carryFlag = cpu->B & 0b10000000; cpu->B <<= 1;} nzFlags(cpu, cpu->B); break;
-			case 0x36 | (0b100 << 8): write(cpu, 0x0000 | cpu->DPL, cpu->B); checkInterrupts(cpu); END(cpu); break;
+			case 0x36 | (0b011 << 8): cpu->B = read(cpu, 0x0000 | cpu->DPL); break;
+			case 0x36 | (0b100 << 8): write(cpu, 0x0000 | cpu->DPL, cpu->B); if (cpu->carryFlag) {cpu->carryFlag = cpu->B & 0b10000000; cpu->B <<= 1; cpu->B++;} else {cpu->carryFlag = cpu->B & 0b10000000; cpu->B <<= 1;} nzFlags(cpu, cpu->B); break;
+			case 0x36 | (0b101 << 8): write(cpu, 0x0000 | cpu->DPL, cpu->B); checkInterrupts(cpu); END(cpu); break;
 
 			// RLA_ZPX
 			case 0x37 | (0b001 << 8):
@@ -852,7 +853,7 @@ extern inline void tickCPU(CPU *cpu) {
 			// EOR_ABY
 			case 0x59 | (0b001 << 8):
 			case 0x59 | (0b010 << 8): absAddressing(cpu, cpu->Y); break;
-			case 0x59 | (0b011 << 8): cpu->B = read(cpu, DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; else {cpu->A |= cpu->B; nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu);} break;
+			case 0x59 | (0b011 << 8): cpu->B = read(cpu, DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; else {cpu->A ^= cpu->B; nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu);} break;
 			case 0x59 | (0b100 << 8): cpu->A ^= read(cpu, DATAPTR(cpu)); nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu); break;
 
 			// SRE_ABY
@@ -866,7 +867,7 @@ extern inline void tickCPU(CPU *cpu) {
 			// EOR_ABX
 			case 0x5D | (0b001 << 8):
 			case 0x5D | (0b010 << 8): absAddressing(cpu, cpu->X); break;
-			case 0x5D | (0b011 << 8): cpu->B = read(cpu, DATAPTR(cpu)); if (cpu->DPL < cpu->X) cpu->DPH++; else {cpu->A |= cpu->B; nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu);} break;
+			case 0x5D | (0b011 << 8): cpu->B = read(cpu, DATAPTR(cpu)); if (cpu->DPL < cpu->X) cpu->DPH++; else {cpu->A ^= cpu->B; nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu);} break;
 			case 0x5D | (0b100 << 8): cpu->A ^= read(cpu, DATAPTR(cpu)); nzFlags(cpu, cpu->B); checkInterrupts(cpu); END(cpu); break;
 
 			// LSR_ABX
@@ -1191,7 +1192,7 @@ extern inline void tickCPU(CPU *cpu) {
 			case 0xA1 | (0b001 << 8):
 			case 0xA1 | (0b010 << 8):
 			case 0xA1 | (0b011 << 8):
-			case 0xA1 | (0b100 << 8): izxAddressing(cpu);
+			case 0xA1 | (0b100 << 8): izxAddressing(cpu); break;
 			case 0xA1 | (0b101 << 8): cpu->A = read(cpu, DATAPTR(cpu)); nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu); break;
 			
 			// LDX_IMM
@@ -1302,7 +1303,7 @@ extern inline void tickCPU(CPU *cpu) {
 			case 0xB9 | (0b100 << 8): cpu->A = read(cpu, DATAPTR(cpu)); nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu); break;
 
 			// TSX
-			case 0xBA | (0b001 << 8): read(cpu, PROGCOUNTER(cpu)); cpu->X = cpu->SP; checkInterrupts(cpu); END(cpu); break;
+			case 0xBA | (0b001 << 8): read(cpu, PROGCOUNTER(cpu)); cpu->X = cpu->SP; nzFlags(cpu, cpu->SP); checkInterrupts(cpu); END(cpu); break;
 
 			// LAS_ABY
 			case 0xBB | (0b001 << 8):
@@ -1433,7 +1434,7 @@ extern inline void tickCPU(CPU *cpu) {
 
 			// CMP_ZPX
 			case 0xD5 | (0b001 << 8):
-			case 0xD5 | (0b010 << 8): zpiAddressing(cpu, cpu->X);
+			case 0xD5 | (0b010 << 8): zpiAddressing(cpu, cpu->X); break;
 			case 0xD5 | (0b011 << 8): cpu->B = read(cpu, 0x0000 | cpu->DPL); cpu->carryFlag = cpu->A >= cpu->B; nzFlags(cpu, cpu->A - cpu->B); checkInterrupts(cpu); END(cpu); break;
 
 			// DEC_ZPX

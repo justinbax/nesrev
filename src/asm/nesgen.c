@@ -69,7 +69,7 @@ int main(int argc, const char *argv[]) {
 		return -0x02;
 	}
 
-	FILE *output = fopen(argv[5], "w");
+	FILE *output = fopen(argv[5], "wb");
 	if (output == NULL) {
 		printf("Fatal error : couldn't open or create output file.\n");
 		free(chr);

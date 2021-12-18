@@ -23,9 +23,6 @@ bool mapKeys(Port *port, int *keys, int count) {
 }
 
 uint8_t readController(Port *port) {
-	if (port->reg != 0) {
-		//printf("a");
-	}
 	uint8_t data = 0;
 	if (port->keyCount > 0) {
 		if (port->control & PORT_STROBE) {
