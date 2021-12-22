@@ -112,6 +112,7 @@ const Context setupContext(const int width, const int height) {
 	// Returns a Context object containing all handlers information needed for drawing and terminating
 	Context context;
 	context.status = false; // The success flag is only set at the end of the operation so we can safely return the context as it is if we encounter an error.
+
 	// Contrary to the index count, the vertex count is needed when calling glDraw* and is therefore stored in the context object.
 	// TODO deal with paths
 	context.verticesCount =  width * height * VERTEX_COUNT * VERTEX_SIZE;
@@ -140,13 +141,16 @@ const Context setupContext(const int width, const int height) {
 	// This array is dynamically allocated to avoid memory depletion in the stack area for setupPixels
 	int indicesCount = INDICES_PER_POLYGON * height * width;
 	unsigned int *indices = malloc(sizeof(float) * indicesCount);
-	if (indices == NULL)
+	if (indices == NULL) {
+		terminateContext(&context);
 		return context;
+	}
 
 	// This array is also dynamically allocated to avoid memory depletion in the stack area for setupPixels
 	float *vertices = malloc(sizeof(float) * context.verticesCount);
 	if (vertices == NULL) {
 		free(indices);
+		terminateContext(&context);
 		return context;
 	}
 
@@ -231,11 +235,12 @@ void draw(const Context context, const int width, const int height, const uint8_
 	glBindVertexArray(0);
 }
 
-void terminateContext(const Context context) {
-	glDeleteVertexArrays(1, &context.idVertexArray);
-	glDeleteBuffers(1, &context.idVertexBuffer);
-	glDeleteBuffers(1, &context.idElementBuffer);
-	glDeleteBuffers(1, &context.idTextureBuffer);
-	glDeleteTextures(1, &context.idFrameTexture);
-	glDeleteProgram(context.idShaderProgram);
+void terminateContext(Context *context) {
+	glDeleteVertexArrays(1, &context->idVertexArray);
+	glDeleteBuffers(1, &context->idVertexBuffer);
+	glDeleteBuffers(1, &context->idElementBuffer);
+	glDeleteBuffers(1, &context->idTextureBuffer);
+	glDeleteTextures(1, &context->idFrameTexture);
+	glDeleteProgram(context->idShaderProgram);
+	context->status = false;
 }

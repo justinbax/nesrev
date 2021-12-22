@@ -93,9 +93,6 @@ typedef struct {
 	uint16_t addressPins;
 	uint8_t dataPins;
 	uint64_t cycleCount;
-
-	// TODO remove this
-	bool opcodesUsed[256];
 } CPU;
 
 // Interface functions
@@ -325,9 +322,6 @@ void initCPU(CPU *cpu, PPU *ppu, Port ports[2]) {
 	cpu->dataPins = 0x00;
 	cpu->rw = '?';
 	cpu->cycleCount = 0;
-
-	for (int i = 0; i < 256; i++)
-		cpu->opcodesUsed[i] = false;
 }
 
 extern inline void pollInterrupts(CPU *cpu) {
@@ -346,7 +340,6 @@ void setLogCPU(CPU *cpu, int logOption, FILE *logFile) {
 
 
 extern inline void tickCPU(CPU *cpu) {
-	// TODO none of this is tested
 	// TODO optimize
 	// TODO interrupts are ugly
 
@@ -379,10 +372,6 @@ extern inline void tickCPU(CPU *cpu) {
 		// Every write cycle (how OAMDMAstatus becomes DMA_WAIT) is either followed by another write cycle in RMW instructions (which the DMA lets execute) or by an opcode fetch, which the DMA hijacks.
 		if (cpu->OAMDMAstatus != DMA_WAIT) {
 			cpu->IR = fetch(cpu);
-			if (!cpu->opcodesUsed[cpu->IR]) {
-				cpu->opcodesUsed[cpu->IR] = true;
-				printf("%04X : %s\n", PROGCOUNTER(cpu), instructions[cpu->IR]);
-			}
 		} else {
 			cpu->DPL = 0x00;
 			cpu->step--;
@@ -444,7 +433,7 @@ extern inline void tickCPU(CPU *cpu) {
 			case 0x03 | (0b011 << 8):
 			case 0x03 | (0b100 << 8): izxAddressing(cpu); break;
 			case 0x03 | (0b101 << 8): cpu->B = read(cpu, DATAPTR(cpu)); break;
-			case 0x03 | (0b110 << 8): write(cpu, DATAPTR(cpu), cpu->B); cpu->carryFlag = cpu->B & 0b10000000; cpu->B <<= 1; cpu->A |= cpu->B; nzFlags(cpu, cpu->B); break;
+			case 0x03 | (0b110 << 8): write(cpu, DATAPTR(cpu), cpu->B); cpu->carryFlag = cpu->B & 0b10000000; cpu->B <<= 1; cpu->A |= cpu->B; nzFlags(cpu, cpu->A); break;
 			case 0x03 | (0b111 << 8): write(cpu, DATAPTR(cpu), cpu->B); checkInterrupts(cpu); END(cpu); break;
 
 			// ORA_ZP
@@ -514,8 +503,8 @@ extern inline void tickCPU(CPU *cpu) {
 			case 0x13 | (0b010 << 8):
 			case 0x13 | (0b011 << 8): izyAddressing(cpu); break;
 			case 0x13 | (0b100 << 8): cpu->B = read(cpu, DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; break;
-			case 0x13 | (0b101 << 8): cpu->B = read(cpu, DATAPTR(cpu)); break;
-			case 0x13 | (0b110 << 8): write(cpu, DATAPTR(cpu), cpu->B); cpu->carryFlag = cpu->B & 0b10000000; cpu->B <<= 1; cpu->A |= cpu->B; nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu); break;
+			case 0x13 | (0b101 << 8): cpu->B = read(cpu, DATAPTR(cpu)); cpu->carryFlag = cpu->B & 0b10000000; cpu->B <<= 1; break;
+			case 0x13 | (0b110 << 8): write(cpu, DATAPTR(cpu), cpu->B); cpu->A |= cpu->B; nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu); break;
 
 			// ORA_ZPX
 			case 0x15 | (0b001 << 8):
@@ -1332,7 +1321,7 @@ extern inline void tickCPU(CPU *cpu) {
 			// LAX_ABY
 			case 0xBF | (0b001 << 8):
 			case 0xBF | (0b010 << 8): absAddressing(cpu, cpu->Y); break;
-			case 0xBF | (0b011 << 8): cpu->X = read(cpu, DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; else {cpu->A = cpu->X; nzFlags(cpu, cpu->Y); checkInterrupts(cpu); END(cpu);} break;
+			case 0xBF | (0b011 << 8): cpu->X = read(cpu, DATAPTR(cpu)); if (cpu->DPL < cpu->Y) cpu->DPH++; else {cpu->A = cpu->X; nzFlags(cpu, cpu->X); checkInterrupts(cpu); END(cpu);} break;
 			case 0xBF | (0b100 << 8): cpu->X = read(cpu, DATAPTR(cpu)); cpu->A = cpu->X; nzFlags(cpu, cpu->X); checkInterrupts(cpu); END(cpu); break;
 
 			// CPY_IMM

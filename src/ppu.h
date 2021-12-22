@@ -204,7 +204,6 @@ extern inline void renderPixel(PPU *ppu) {
 			sprColor |= ((ppu->sprPatternHigh[i] << shiftValue) & 0x80) >> 6;
 
 			attributes = ppu->sprAttributes[i];
-			sprColor |= (attributes & 0b11) << 2;
 			outputUnit = i;
 		}
 	}
@@ -212,8 +211,6 @@ extern inline void renderPixel(PPU *ppu) {
 	// Most significant bits of bgPatternData (0x8000; bit 15) and bgPaletteData (0x80; bit 7) are the next one to be rendered
 	bgColor = ((ppu->bgPatternData[0] << ppu->fineX) & 0x8000) >> 15;
 	bgColor |= ((ppu->bgPatternData[1] << ppu->fineX) & 0x8000) >> 14;
-	bgColor |= ((ppu->bgPaletteData[0] << ppu->fineX) & 0x80) >> 5;
-	bgColor |= ((ppu->bgPaletteData[1] << ppu->fineX) & 0x80) >> 4;
 
 	// Disables rendering according to PPUMASK
 	if (!(ppu->registers[PPUMASK] & MASK_RENDERSPR) || (!(ppu->registers[PPUMASK] & MASK_SHOWLEFTSPR) && ppu->pixel < 8))
@@ -227,12 +224,17 @@ extern inline void renderPixel(PPU *ppu) {
 
 	// TODO change color index according to addressVRAM during vblank (bg palette hack)
 	// Multiplexer : checks which pixel (background, sprite or backdrop) should be rendered on screen
+	// Only when sprite priority has been computed we can add palette information (palette doesn't affect priority, so we can use !bgColor in peace)
 	int framebufferIndex = (ppu->scanline * 256 + ppu->pixel) * 3;
 	uint8_t paletteIndex = 0;
-	if (bgColor && (!sprColor || (attributes & SPR_PRIORITY)))
-		paletteIndex = bgColor;
-	else if (sprColor && (!bgColor || !(attributes & SPR_PRIORITY)))
+	if (sprColor && (!bgColor || !(attributes & SPR_PRIORITY))) {
 		paletteIndex = sprColor | 0b10000;
+		paletteIndex |= (attributes & 0b11) << 2;
+	} else if (bgColor) {
+		paletteIndex = bgColor;
+		paletteIndex |= ((ppu->bgPaletteData[0] << ppu->fineX) & 0x80) >> 5;
+		paletteIndex |= ((ppu->bgPaletteData[1] << ppu->fineX) & 0x80) >> 4;
+	}
 
 	// Weird palette mirroring
 	if ((paletteIndex & 0b11) == 0) {
@@ -492,7 +494,6 @@ extern inline void tickPPU(PPU *ppu) {
 
 						// The last byte of entry was copied
 						if ((ppu->secondOAMptr & 0b11) == 0) {
-							// TODO this is never reached ?
 							ppu->spriteInRange = false;
 							ppu->sprCount++;
 

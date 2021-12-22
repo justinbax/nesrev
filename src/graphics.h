@@ -19,13 +19,13 @@ typedef struct {
 
 	unsigned int verticesCount; // Total number of vertices to draw. Used to call glDrawElements.
 
-	bool status; // Used to communicate to the callee if an operation succeeded.
+	bool status; // Used to communicate to the callee if context is ready for rendering
 } Context;
 
 const char *readFile(const char *path);
 long int initShaders(const char *vertexShaderPath, const char *fragmentShaderPath);
 const Context setupContext(const int width, const int height);
 void draw(const Context context, const int width, const int height, const uint8_t * const colors);
-void terminateContext(const Context context);
+void terminateContext(Context *context);
 
 #endif // ifndef GRAPHICS_H

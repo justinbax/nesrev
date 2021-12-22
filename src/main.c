@@ -70,6 +70,7 @@ int main(int argc, char *argv[]) {
 	GLFWwindow *window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "NesREV", NULL, NULL);
 	if (window == NULL) {
 		printf("Fatal error : couldn't create window.\n");
+		glfwTerminate();
 		return -0x02;
 	}
 	glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
@@ -79,6 +80,7 @@ int main(int argc, char *argv[]) {
 	// Initializes GLEW
 	if (glewInit() != GLEW_OK) {
 		printf("Fatal error : GLEW couldn't initialize correctly.\n");
+		glfwTerminate();
 		return -0x03;
 	}
 	
@@ -88,6 +90,7 @@ int main(int argc, char *argv[]) {
 	const Context context = setupContext(WIDTH_PIXELS, HEIGHT_PIXELS);
 	if (context.status == false) {
 		printf("Fatal error : couldn't set up shader communication with GPU.\n");
+		glfwTerminate();
 		return -0x05;
 	}
 
@@ -95,6 +98,8 @@ int main(int argc, char *argv[]) {
 	uint8_t *colors = malloc(sizeof(uint8_t) * HEIGHT_PIXELS * WIDTH_PIXELS * COLOR_COMPONENTS);
 	if (colors == NULL) {
 		printf("Fatal error : couldn't allocate enough memory.\n");
+		terminateContext(&context);
+		glfwTerminate();
 		return -0x06;
 	}
 
@@ -117,18 +122,31 @@ int main(int argc, char *argv[]) {
 
 	// Debug logging
 	// TODO remove this
-	FILE *logFile = fopen("src/log.txt", "w+");
-	if (logFile == NULL) {
-		printf("Fatal error : can't open / create log file.\n");
-		return -0x07;
+	int debugging = DBG_NONE;
+	FILE *logFile = NULL;
+	if (debugging) {
+		FILE *logFile = fopen("log.txt", "w+");
+		if (logFile == NULL) {
+			printf("Error : can't open / create log file.\n");
+			debugging = DBG_NONE;
+		}
 	}
-	setLogCPU(&cpu, DBG_NONE, logFile);
+	setLogCPU(&cpu, debugging, logFile);
 
-	// TODO very dangerous, just for test purposes
-	// TODO unsigned and const things are just a mess
-	unsigned char *palette = readFile("src/test.pal");
+	// Palette information is stored in .pal files (no header, 3-byte RGB for each of 64 palette colors)
+	FILE *paletteFile = fopen("default.pal", "r");
+	uint8_t palette[0x40 * 3];
+	if (fread(palette, sizeof(uint8_t), 0x40 * 3, paletteFile) != 0x40 * 3) {
+		printf("Fatal error : corrupted default palette file (default.pal).\n");
+		fclose(paletteFile);
+		terminateContext(&context);
+		glfwTerminate();
+		free(colors);
+		fclose(logFile);
+		return -0x04;
+	}
+	fclose(paletteFile);
 	loadPalette(&ppu, palette);
-	free(palette);
 
 	double frameDuration = 1.0f / 60;
 	double frameStart = glfwGetTime();
@@ -141,7 +159,7 @@ int main(int argc, char *argv[]) {
 
 		if (glfwGetTime() - frameStart >= frameDuration) {
 			frameStart = glfwGetTime();
-			for (int i = 0; i < 29780; i++) {
+			for (int i = 0; i < 29781 - (ppu.oddFrame); i++) {
 				// TODO the CPU / PPU alignment is weird
 				tickPPU(&ppu);
 				tickPPU(&ppu);
@@ -179,7 +197,7 @@ int main(int argc, char *argv[]) {
 	fclose(logFile);
 	free(colors);
 
-	terminateContext(context);
+	terminateContext(&context);
 	glfwTerminate();
 
 	return 0;
