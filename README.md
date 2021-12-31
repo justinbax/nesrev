@@ -1,6 +1,6 @@
 # NesREV v3.6
 
-NesREV v3.6 (the v3.6 is part of the name, not the actual version number) is a cycle-accurate emulator for the Nintendo Entertainment System (NES). It is built from the ground up in plain C with only OpenGL as graphical interface (and GLEW/GLFW for compatibility). This project also bundles NESGen, an generator for standardized iNes 1.0 (.nes) files from program data (PRG ROM) and graphical data (CHR ROM). As a demonstration, a sample custom NES game is located in `src/asm/sample.asm` to be assembled, then used by NESGen to create a .nes file readable by NesREV v3.6 or another NES emulator.
+NesREV v3.6 (the v3.6 is part of the name, not the actual version number) is a cycle-accurate emulator for the Nintendo Entertainment System (NES). It is built from the ground up in plain C with only OpenGL as graphical interface (and GLEW/GLFW for compatibility). This project also bundles NESGen, an generator for standardized iNes 1.0 (.nes) files from program data (PRG ROM) and graphical data (CHR ROM). As a demonstration, a custom sample NES game is located in `src/asm/sample.asm` to be assembled, then used by NESGen to create a .nes file readable by NesREV v3.6 or another NES emulator.
 
 ## Usage
 `nesrev input`
@@ -68,7 +68,7 @@ Additional optional functionalities (mostly error callbacks) are also left in `m
 NES games are usually stored in standardized `.nes` files. Currently, NESRev supports reading the crucial components of an `.nes` file in order to get it running. Some features of the iNes standard (I have yet to encounter a .nes file that uses them, given that they're so rare) are not yet implemented.
 
 ## NESGen
-NESGen (`src/asm/nesgen.c`) is a single-file utility program to create valid `.nes` files from information about a cartridge. It is completely seperated from NESRev, so must be compiled manually. Additionally, the assembly code for a sample "game" of my creation is given alongside (`src/asm/sample.asm`) to test see it in action (and also because it helped me debug NESRev. Also it was fun making it).
+NESGen (`src/asm/nesgen.c`) is a single-file utility program to create valid `.nes` files from information about a cartridge. It is completely seperated from NESRev, so must be compiled manually. Additionally, the assembly code for a sample "game" of my creation is given alongside (`src/asm/sample.asm`) to test it and see it in action (and also because it helped me debug NESRev. Also it was fun making it). You'll need a 6502 assembler (like [vasm](http://sun.hasenbraten.de/vasm/) - oldstyle version) turn it into PRG ROM. As for CHR, you should be able to create a binary file yourself: the program only uses background tile 0 (CHR 0x1000 - 0x100F) and sprite tile 1 (CHR 0x0010 - 0x001F)
 
 ### Usage
 `nesgen chr prg nnn M output`
