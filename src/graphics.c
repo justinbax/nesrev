@@ -15,6 +15,31 @@
 
 #define TEXTURE_UNIT 0 // Texture unit used to send pixel data to the fragment shader
 
+// Non-interface functions
+
+const char *readFile(const char *path) {
+	// Returns contents of text file in a stack-allocated char *. The returned pointer has to be deallocated with free by callee
+	// File is opened in binary mode to avoid problems with reading CRLF (2 chars) when getting file size but only reading LF (1 char) when calling fread
+	FILE *input = fopen(path, "rb");
+	if (input == NULL)
+		return NULL;
+
+	// Allocates enough memory
+	fseek(input, 0, SEEK_END);
+	long int size = ftell(input);
+	rewind(input);
+	char *buffer = malloc((size + 1) * sizeof(char));
+	if (buffer == NULL) {
+		fclose(input);
+		return NULL;
+	}
+
+	fread(buffer, size * sizeof(char), 1, input);
+	buffer[size] = '\0';
+	fclose(input);
+	return buffer;
+}
+
 long int createShader(const char *path, GLenum type) {
 	// Creates and compiles a shader from a file
 	unsigned int idShader = glCreateShader(type);
@@ -64,32 +89,6 @@ long int createProgram(unsigned int idVertexShader, unsigned int idFragmentShade
 	return idProgramShader;
 }
 
-
-// Interface functions
-// TODO replace readFile with something else (ines.c)
-const char *readFile(const char *path) {
-	// Returns contents of text file in a stack-allocated char *. The returned pointer has to be deallocated with free by callee
-	// File is opened in binary mode to avoid problems with reading CRLF (2 chars) when getting file size but only reading LF (1 char) when calling fread
-	FILE *input = fopen(path, "rb");
-	if (input == NULL)
-		return NULL;
-
-	// Allocates enough memory
-	fseek(input, 0, SEEK_END);
-	long int size = ftell(input);
-	rewind(input);
-	char *buffer = malloc((size + 1) * sizeof(char));
-	if (buffer == NULL) {
-		fclose(input);
-		return NULL;
-	}
-
-	fread(buffer, size * sizeof(char), 1, input);
-	buffer[size] = '\0';
-	fclose(input);
-	return buffer;
-}
-
 long int initShaders(const char *vertexShaderPath, const char *fragmentShaderPath) {
 	// Creates and compiles shaders into a shader program and returns it
 	// Because GLenum expands to unsigned int and we need signed ints for error handling, we use longs to cover the range of unsigned ints while keeping negative numbers.
@@ -106,6 +105,9 @@ long int initShaders(const char *vertexShaderPath, const char *fragmentShaderPat
 	glDeleteShader(idFragmentShader);
 	return idShaderProgram;
 }
+
+
+// Interface functions
 
 const Context setupContext(const int width, const int height) {
 	// Sets up vertex information and sends it to bound array and element array buffers
@@ -142,7 +144,7 @@ const Context setupContext(const int width, const int height) {
 	int indicesCount = INDICES_PER_POLYGON * height * width;
 	unsigned int *indices = malloc(sizeof(float) * indicesCount);
 	if (indices == NULL) {
-		terminateContext(&context);
+		terminateContext(context);
 		return context;
 	}
 
@@ -150,7 +152,7 @@ const Context setupContext(const int width, const int height) {
 	float *vertices = malloc(sizeof(float) * context.verticesCount);
 	if (vertices == NULL) {
 		free(indices);
-		terminateContext(&context);
+		terminateContext(context);
 		return context;
 	}
 
@@ -161,7 +163,7 @@ const Context setupContext(const int width, const int height) {
 	// TODO this whole thing looks like magic, but is also very ugly
 	for (int i = 0; i < height; i++) {
 		for (int j = 0; j < width; j++) {
-			int currentPixel = i * width + j;
+			int current = i * width + j;
 			for (int k = 0; k < VERTEX_COUNT; k++) {
 				// Iterates over each vertex of the rectangle
 				// TODO this assumes rectangle are drawn, which isn't bad but makes the VERTEX_COUNT expression quite worthless
@@ -171,18 +173,18 @@ const Context setupContext(const int width, const int height) {
 				// k = 3 : top-right vertex (+x, +y)
 				// j + (k & 0b1) adds one to j when k mod 2 == 1. In other words, when k is for one of the right vertices, this adds 1 * pixelWidthNormalized to the x coordinate
 				// "Why are you using k & 0b1, you can check parity with the modulo operator" yeah I really don't care. 
-				vertices[(currentPixel * VERTEX_COUNT + k) * VERTEX_SIZE + 0] = pixelWidthNormalized * (j + (k & 0b1)) - 1.0f; // x coordinate
+				vertices[(current * VERTEX_COUNT + k) * VERTEX_SIZE + 0] = pixelWidthNormalized * (j + (k & 0b1)) - 1.0f; // x coordinate
 				// i + (k > 1) adds one to i when k > 1. In other words, when k is for one of the top vertices, this adds 1 * pixelHeightNormalized to the y coordinates
-				vertices[(currentPixel * VERTEX_COUNT + k) * VERTEX_SIZE + 1] = -1 * (pixelHeightNormalized * (i + (k > 1)) - 1.0f); // y coordinate
+				vertices[(current * VERTEX_COUNT + k) * VERTEX_SIZE + 1] = -1 * (pixelHeightNormalized * (i + (k > 1)) - 1.0f); // y coordinate
 				// This is multiplied by -1 because, in normalized device coordinates, y == 1.0f is the top of the screen and we want the array of triangles to be top-to-bottom for the PPU
 			}
 			// For each rectangle, this fills the indices array with the correct indices to dissect it into two triangles
-			indices[currentPixel * INDICES_PER_POLYGON + 0] = currentPixel * VERTEX_COUNT + 0; // first triangle : bottom-left
-			indices[currentPixel * INDICES_PER_POLYGON + 1] = currentPixel * VERTEX_COUNT + 1; // first triangle : bottom-right
-			indices[currentPixel * INDICES_PER_POLYGON + 2] = currentPixel * VERTEX_COUNT + 2; // first triangle : top-left
-			indices[currentPixel * INDICES_PER_POLYGON + 3] = currentPixel * VERTEX_COUNT + 1; // second triangle : bottom-right
-			indices[currentPixel * INDICES_PER_POLYGON + 4] = currentPixel * VERTEX_COUNT + 2; // second triangle : top-left
-			indices[currentPixel * INDICES_PER_POLYGON + 5] = currentPixel * VERTEX_COUNT + 3; // second triangle : top-right
+			indices[current * INDICES_PER_POLYGON + 0] = current * VERTEX_COUNT + 0; // first triangle : bottom-left
+			indices[current * INDICES_PER_POLYGON + 1] = current * VERTEX_COUNT + 1; // first triangle : bottom-right
+			indices[current * INDICES_PER_POLYGON + 2] = current * VERTEX_COUNT + 2; // first triangle : top-left
+			indices[current * INDICES_PER_POLYGON + 3] = current * VERTEX_COUNT + 1; // second triangle : bottom-right
+			indices[current * INDICES_PER_POLYGON + 4] = current * VERTEX_COUNT + 2; // second triangle : top-left
+			indices[current * INDICES_PER_POLYGON + 5] = current * VERTEX_COUNT + 3; // second triangle : top-right
 		}
 	}
 
@@ -235,12 +237,11 @@ void draw(const Context context, const int width, const int height, const uint8_
 	glBindVertexArray(0);
 }
 
-void terminateContext(Context *context) {
-	glDeleteVertexArrays(1, &context->idVertexArray);
-	glDeleteBuffers(1, &context->idVertexBuffer);
-	glDeleteBuffers(1, &context->idElementBuffer);
-	glDeleteBuffers(1, &context->idTextureBuffer);
-	glDeleteTextures(1, &context->idFrameTexture);
-	glDeleteProgram(context->idShaderProgram);
-	context->status = false;
+void terminateContext(const Context context) {
+	glDeleteVertexArrays(1, &context.idVertexArray);
+	glDeleteBuffers(1, &context.idVertexBuffer);
+	glDeleteBuffers(1, &context.idElementBuffer);
+	glDeleteBuffers(1, &context.idTextureBuffer);
+	glDeleteTextures(1, &context.idFrameTexture);
+	glDeleteProgram(context.idShaderProgram);
 }

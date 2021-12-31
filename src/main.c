@@ -98,7 +98,7 @@ int main(int argc, char *argv[]) {
 	uint8_t *colors = malloc(sizeof(uint8_t) * HEIGHT_PIXELS * WIDTH_PIXELS * COLOR_COMPONENTS);
 	if (colors == NULL) {
 		printf("Fatal error : couldn't allocate enough memory.\n");
-		terminateContext(&context);
+		terminateContext(context);
 		glfwTerminate();
 		return -0x06;
 	}
@@ -139,7 +139,7 @@ int main(int argc, char *argv[]) {
 	if (fread(palette, sizeof(uint8_t), 0x40 * 3, paletteFile) != 0x40 * 3) {
 		printf("Fatal error : corrupted default palette file (default.pal).\n");
 		fclose(paletteFile);
-		terminateContext(&context);
+		terminateContext(context);
 		glfwTerminate();
 		free(colors);
 		fclose(logFile);
@@ -152,7 +152,7 @@ int main(int argc, char *argv[]) {
 	double frameStart = glfwGetTime();
 
 #ifdef _WIN32
-	timeBeginPeriod(2);
+	timeBeginPeriod(WIN32_TIMERESOLUTION);
 #endif
 
 	while (!glfwWindowShouldClose(window)) {
@@ -197,7 +197,7 @@ int main(int argc, char *argv[]) {
 	fclose(logFile);
 	free(colors);
 
-	terminateContext(&context);
+	terminateContext(context);
 	glfwTerminate();
 
 	return 0;
