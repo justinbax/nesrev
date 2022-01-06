@@ -158,8 +158,8 @@ extern inline void writeAddressPPU(PPU *ppu, uint16_t address, uint8_t value) {
 extern inline void shiftRegistersPPU(PPU *ppu) {
 	// These internal registers use the most significant bit to render next
 	ppu->bgPatternData[0] <<= 1;
-	ppu->bgPatternData[1] <<= 1;
 	ppu->bgPaletteData[0] <<= 1;
+	ppu->bgPatternData[1] <<= 1;
 	ppu->bgPaletteData[1] <<= 1;
 	ppu->bgPaletteData[0] |= ppu->bgSerialPaletteLatch[0];
 	ppu->bgPaletteData[1] |= ppu->bgSerialPaletteLatch[1];
@@ -222,10 +222,8 @@ extern inline void renderPixel(PPU *ppu) {
 	if (ppu->sprZeroOnCurrent && outputUnit == 0 && sprColor && bgColor && ppu->pixel != 255)
 		ppu->registers[PPUSTATUS] |= STATUS_SPR0;
 
-	// TODO change color index according to addressVRAM during vblank (bg palette hack)
 	// Multiplexer : checks which pixel (background, sprite or backdrop) should be rendered on screen
 	// Only when sprite priority has been computed we can add palette information (palette doesn't affect priority, so we can use !bgColor in peace)
-	int framebufferIndex = (ppu->scanline * 256 + ppu->pixel) * 3;
 	uint8_t paletteIndex = 0;
 	if (sprColor && (!bgColor || !(attributes & SPR_PRIORITY))) {
 		paletteIndex = sprColor | 0b10000;
@@ -241,7 +239,13 @@ extern inline void renderPixel(PPU *ppu) {
 		paletteIndex &= 0b10000;
 	}
 
+	// Background palette hack : when rendering is disabled, background is determined by VRAM address if in range [3F00, 3FFF]
+	if (!RENDERING(ppu) && ppu->addressVRAM > 0x3F00 && ppu->addressVRAM <= 0x3FFF) {
+		paletteIndex = (ppu->addressVRAM - 0x3F00) & 0b1111;
+	}
+
 	// Render with greyscale accprding to PPUMASK
+	int framebufferIndex = (ppu->scanline * 256 + ppu->pixel) * 3;
 	ppu->framebuffer[framebufferIndex] = ppu->colors[ppu->palettes[paletteIndex] & (ppu->registers[PPUMASK] & 0b1 ? 0x30 : 0x3F)][0];
 	ppu->framebuffer[framebufferIndex + 1] = ppu->colors[ppu->palettes[paletteIndex] & (ppu->registers[PPUMASK] & 0b1 ? 0x30 : 0x3F)][1];
 	ppu->framebuffer[framebufferIndex + 2] = ppu->colors[ppu->palettes[paletteIndex] & (ppu->registers[PPUMASK] & 0b1 ? 0x30 : 0x3F)][2];
@@ -433,8 +437,11 @@ extern inline void tickPPU(PPU *ppu) {
 	// TODO words cannot describe how ugly this whole thing is
 	// TODO I have no idea how any of this works, so anyone else won't either
 
+	// This is used numerous times and does not change withing a cycle so we only compute it once
+	bool isRendering = RENDERING(ppu);
+
 	// Scanline-independant logic
-	if (RENDERING(ppu)) {
+	if (isRendering) {
 		if (ppu->pixel == 256)
 			incrementY(ppu);
 		if ((ppu->pixel & 0b111) == 0 && (ppu->pixel <= 256 || ppu->pixel >= 328) && ppu->pixel != 0 && ppu->scanline )
@@ -449,9 +456,9 @@ extern inline void tickPPU(PPU *ppu) {
 	// TODO the nested if/elses are quite a pain
 	if (ppu->scanline < 240 || ppu->scanline == 261) {
 		if (ppu->pixel == 0) {
-			if (ppu->scanline == 0 && ppu->oddFrame)
+			if (ppu->scanline == 0 && ppu->oddFrame && isRendering)
 				ppu->bgNametableLatch = readAddressPPU(ppu, NAMETABLEADDR(ppu));
-			else
+			else if (isRendering)
 				PUTADDRBUS(ppu, BGPATTERNADDR(ppu));
 				
 			if (ppu->scanline == 261) ppu->oddFrame = !ppu->oddFrame;
@@ -460,8 +467,9 @@ extern inline void tickPPU(PPU *ppu) {
 			ppu->spriteInRange = ppu->sprZeroOnNext = false;
 			ppu->secondOAMptr = ppu->sprCount = 0;
 		} else if (ppu->pixel <= 256) {
+
 			// Sprite evaluation
-			if (RENDERING(ppu) && ppu->scanline != 261) {
+			if (isRendering && ppu->scanline != 261) {
 				if (ppu->pixel <= 64) {
 					// Cycles 1-64 : fills the secondary OAM with 0xFF
 					if (ppu->pixel & 1) {
@@ -485,7 +493,7 @@ extern inline void tickPPU(PPU *ppu) {
 					// TODO maybe join spriteInRange and else together
 					if (ppu->pixel & 1) ppu->registers[OAMDATA] = ppu->OAM[ppu->registers[OAMADDR]];
 					else if (ppu->spriteInRange) {
-						if (ppu->sprCount < 7)
+						if (ppu->sprCount < 8)
 							ppu->secondOAM[ppu->secondOAMptr] = ppu->registers[OAMDATA];
 						// else ppu->secondOAM[ppu->secondOAMptr]; // Dummy read for future logging
 
@@ -502,7 +510,7 @@ extern inline void tickPPU(PPU *ppu) {
 								ppu->registers[OAMADDR] &= 0b11111100;
 						}
 					} else {
-						if (ppu->sprCount < 7)
+						if (ppu->sprCount < 8)
 							ppu->secondOAM[ppu->secondOAMptr] = ppu->registers[OAMDATA];
 						// else ppu->secondOAM[ppu->secondOAMptr]; // TODO Dummy read for future logging
 
@@ -530,137 +538,158 @@ extern inline void tickPPU(PPU *ppu) {
 				}
 			}
 
-			// Tile fetching
-			switch ((ppu->pixel - 1) & 0b111) {
-				case 0b000:
-					if (ppu->pixel != 1)
-						feedShiftRegisters(ppu);
-					else if (ppu->scanline == 261) {
-						ppu->registers[PPUSTATUS] = 0;
-						UPDATENMI(ppu);
-						ppu->allowRegWrites = true;
-					}
-					PUTADDRBUS(ppu, NAMETABLEADDR(ppu));
-					break;
-				case 0b001: ppu->bgNametableLatch = readAddressPPU(ppu, NAMETABLEADDR(ppu)); break;
-				case 0b010: PUTADDRBUS(ppu, ATTRIBUTEADDR(ppu)); break;
-				case 0b011: ppu->bgPaletteLatch = readAddressPPU(ppu, ATTRIBUTEADDR(ppu)); ppu->bgPaletteLatch >>= ((ppu->addressVRAM & 0b1000000) >> 4) | (ppu->addressVRAM & 0b10); break;
-				case 0b100: PUTADDRBUS(ppu, BGPATTERNADDR(ppu)); break;
-				case 0b101: ppu->bgPatternLatch[0] = readAddressPPU(ppu, BGPATTERNADDR(ppu)); break;
-				case 0b110: PUTADDRBUS(ppu, 0b1000 | BGPATTERNADDR(ppu)); break;
-				case 0b111: ppu->bgPatternLatch[1] = readAddressPPU(ppu, 0b1000 | BGPATTERNADDR(ppu)); break;
-			}
-
-			// Color output
-			if (ppu->scanline != 261) renderPixel(ppu);
-
-			shiftRegistersPPU(ppu);
-
-		} else if (ppu->pixel <= 320) {
-			if (ppu->pixel >= 280 && ppu->pixel < 305 && RENDERING(ppu)) {
-				ppu->sprZeroOnCurrent = ppu->sprZeroOnNext;
-				ppu->registers[OAMADDR] = 0;
-				if (ppu->scanline == 261) {
-					ppu->addressVRAM &= ~(VRAM_COARSEY | VRAM_FINEY | VRAM_YNAMETABLE);
-					ppu->addressVRAM |= ppu->tempAddressVRAM & (VRAM_COARSEY | VRAM_FINEY | VRAM_YNAMETABLE);
+			// Status update
+			if (((ppu->pixel - 1) & 0b111) == 0) {
+				if (ppu->pixel != 1)
+					feedShiftRegisters(ppu);
+				else if (ppu->scanline == 261) {
+					ppu->registers[PPUSTATUS] = 0;
+					UPDATENMI(ppu);
+					ppu->allowRegWrites = true;
 				}
 			}
 
-			// TODO disable sprite eval during forced blanking
+			// Tile fetching
+			if (isRendering) {
+				switch ((ppu->pixel - 1) & 0b111) {
+					case 0b000: PUTADDRBUS(ppu, NAMETABLEADDR(ppu)); break;
+					case 0b001: ppu->bgNametableLatch = readAddressPPU(ppu, NAMETABLEADDR(ppu)); break;
+					case 0b010: PUTADDRBUS(ppu, ATTRIBUTEADDR(ppu)); break;
+					case 0b011: ppu->bgPaletteLatch = readAddressPPU(ppu, ATTRIBUTEADDR(ppu)); ppu->bgPaletteLatch >>= ((ppu->addressVRAM & 0b1000000) >> 4) | (ppu->addressVRAM & 0b10); break;
+					case 0b100: PUTADDRBUS(ppu, BGPATTERNADDR(ppu)); break;
+					case 0b101: ppu->bgPatternLatch[0] = readAddressPPU(ppu, BGPATTERNADDR(ppu)); break;
+					case 0b110: PUTADDRBUS(ppu, 0b1000 | BGPATTERNADDR(ppu)); break;
+					case 0b111: ppu->bgPatternLatch[1] = readAddressPPU(ppu, 0b1000 | BGPATTERNADDR(ppu)); break;
+				}
+			}
+			
+			// Color output
+			if (ppu->scanline != 261) renderPixel(ppu);
+
+			// Status update 2: Electric Boogaloo
+			shiftRegistersPPU(ppu);
+
+		} else if (ppu->pixel <= 320) {
+			// Status update
+			ppu->sprZeroOnCurrent = ppu->sprZeroOnNext;
+			ppu->registers[OAMADDR] = 0;
+
+			if (ppu->pixel >= 280 && ppu->pixel < 305 && ppu->scanline == 261 && isRendering) {
+				ppu->addressVRAM &= ~(VRAM_COARSEY | VRAM_FINEY | VRAM_YNAMETABLE);
+				ppu->addressVRAM |= ppu->tempAddressVRAM & (VRAM_COARSEY | VRAM_FINEY | VRAM_YNAMETABLE);
+			} else if (ppu->pixel == 257) {
+				feedShiftRegisters(ppu);
+			}
+
 			// Sprite evaluation & tile fetching
-			const uint8_t currentOAM = ((ppu->pixel - 1) & 0b11) | (((ppu->pixel - 1) >> 1) & 0b11100);
-			const uint8_t currentSprite = ((ppu->pixel - 1) >> 3) & 0b111;
-			switch ((ppu->pixel - 1) & 0b111) {
-				case 0b000:
-					// Sprite Y position and garbage nametable
-					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM];
-					ppu->sprPatternIndex = ppu->scanline - ppu->registers[OAMDATA];
-					PUTADDRBUS(ppu, NAMETABLEADDR(ppu));
-					if (ppu->pixel == 257) {
-						feedShiftRegisters(ppu);
-					}
-					break;
-				case 0b001:
-					// Sprite index and garbage nametable
-					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM];
-					ppu->sprPatternIndex |= ppu->registers[OAMDATA] << 4;
-					readAddressPPU(ppu, NAMETABLEADDR(ppu));
-					break;
-				case 0b010:
-					// Sprite attributes and garbage attribute table
-					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM];
-					ppu->sprAttributes[currentSprite] = ppu->registers[OAMDATA];
-					if (ppu->registers[OAMDATA] & SPR_VERTSYMMETRY) {
-						// TODO maybe add macros for those pattern bitmaps ?
-						ppu->sprPatternIndex = (ppu->sprPatternIndex & 0b111111111000) | (7 - (ppu->sprPatternIndex & 0b111)); // Vertical symmetry, if applicable
-					}
-					PUTADDRBUS(ppu, ATTRIBUTEADDR(ppu));
-					break;
-				case 0b011:
-					// Sprite X position and garbage attribute table
-					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM];
-					ppu->sprXPos[currentSprite] = ppu->registers[OAMDATA];
-					readAddressPPU(ppu, ATTRIBUTEADDR(ppu));
-					break;
-				case 0b100:
-					// Garbage OAM read and sprite pattern fetch
-					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM | 0b11];
-					PUTADDRBUS(ppu, SPRPATTERNADDR(ppu));
-					break;
-				case 0b101:
-					// Garbage OAM read and sprite pattern fetch
-					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM | 0b11];
-					ppu->sprPatternLow[currentSprite] = readAddressPPU(ppu, SPRPATTERNADDR(ppu));
-					if (currentSprite >= ppu->sprCount)
-						ppu->sprPatternLow[currentSprite] = 0x00;
-					else if (ppu->sprAttributes[currentSprite] & SPR_HORSYMMETRY)
-						ppu->sprPatternLow[currentSprite] = flipByte(ppu->sprPatternLow[currentSprite]); // Horizontal symmetry, if applicable
-					break;
-				case 0b110:
-					// Garbage OAM read and sprite high pattern fetch
-					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM | 0b11];
-					PUTADDRBUS(ppu, 0b1000 | SPRPATTERNADDR(ppu));
-					break;
-				case 0b111:
-					// Garbage OAM read and sprite high pattern fetch
-					ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM | 0b11];
-					ppu->sprPatternHigh[currentSprite] = readAddressPPU(ppu, 0b1000 | SPRPATTERNADDR(ppu));
-					if (currentSprite >= ppu->sprCount)
-						ppu->sprPatternHigh[currentSprite] = 0x00;
-					else if (ppu->sprAttributes[currentSprite] & SPR_HORSYMMETRY)
-						ppu->sprPatternHigh[currentSprite] = flipByte(ppu->sprPatternHigh[currentSprite]); // Horizontal symmetry, if applicable
-					break;
+			if (isRendering) {
+				const uint8_t currentOAM = ((ppu->pixel - 1) & 0b11) | (((ppu->pixel - 1) >> 1) & 0b11100);
+				const uint8_t currentSprite = ((ppu->pixel - 1) >> 3) & 0b111;
+				switch ((ppu->pixel - 1) & 0b111) {
+					case 0b000:
+						// Sprite Y position
+						ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM];
+						ppu->sprPatternIndex = ppu->scanline - ppu->registers[OAMDATA];
+
+						// Garbage nametable
+						PUTADDRBUS(ppu, NAMETABLEADDR(ppu));
+						break;
+					case 0b001:
+						// Sprite index
+						ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM];
+						ppu->sprPatternIndex |= ppu->registers[OAMDATA] << 4;
+
+						// Garbage nametable
+						readAddressPPU(ppu, NAMETABLEADDR(ppu));
+						break;
+					case 0b010:
+						// Sprite attributes
+						ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM];
+						ppu->sprAttributes[currentSprite] = ppu->registers[OAMDATA];
+						if (ppu->registers[OAMDATA] & SPR_VERTSYMMETRY) {
+							// TODO maybe add macros for those pattern bitmaps ?
+							ppu->sprPatternIndex = (ppu->sprPatternIndex & 0b111111111000) | (7 - (ppu->sprPatternIndex & 0b111)); // Vertical symmetry, if applicable
+						}
+
+						// Garbage attribute table
+						PUTADDRBUS(ppu, ATTRIBUTEADDR(ppu));
+						break;
+					case 0b011:
+						// Sprite X position
+						ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM];
+						ppu->sprXPos[currentSprite] = ppu->registers[OAMDATA];
+
+						// Garbage attribute table
+						readAddressPPU(ppu, ATTRIBUTEADDR(ppu));
+						break;
+					case 0b100:
+						// Garbage OAM read
+						ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM | 0b11];
+
+						// Sprite pattern fetch
+						PUTADDRBUS(ppu, SPRPATTERNADDR(ppu));
+						break;
+					case 0b101:
+						// Garbage OAM read
+						ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM | 0b11];
+
+						// Sprite pattern fetch
+						ppu->sprPatternLow[currentSprite] = readAddressPPU(ppu, SPRPATTERNADDR(ppu));
+						if (currentSprite >= ppu->sprCount)
+							ppu->sprPatternLow[currentSprite] = 0x00;
+						else if (ppu->sprAttributes[currentSprite] & SPR_HORSYMMETRY)
+							ppu->sprPatternLow[currentSprite] = flipByte(ppu->sprPatternLow[currentSprite]); // Horizontal symmetry, if applicable
+						break;
+					case 0b110:
+						// Garbage OAM read and sprite high pattern fetch
+						ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM | 0b11];
+						PUTADDRBUS(ppu, 0b1000 | SPRPATTERNADDR(ppu));
+						break;
+					case 0b111:
+						// Garbage OAM read and sprite high pattern fetch
+						ppu->registers[OAMDATA] = ppu->secondOAM[currentOAM | 0b11];
+						ppu->sprPatternHigh[currentSprite] = readAddressPPU(ppu, 0b1000 | SPRPATTERNADDR(ppu));
+						if (currentSprite >= ppu->sprCount)
+							ppu->sprPatternHigh[currentSprite] = 0x00;
+						else if (ppu->sprAttributes[currentSprite] & SPR_HORSYMMETRY)
+							ppu->sprPatternHigh[currentSprite] = flipByte(ppu->sprPatternHigh[currentSprite]); // Horizontal symmetry, if applicable
+						break;
+				}
 			}
 
 			shiftRegistersPPU(ppu);
 
 		} else if (ppu->pixel <= 336) {
 			// TODO this repeats pixel <= 256
+			// Status update
 			ppu->registers[OAMDATA] = ppu->secondOAM[0];
+			if (ppu->pixel == 329) feedShiftRegisters(ppu);
 
-			switch ((ppu->pixel - 1) & 0b111) {
-				case 0b000:
-					if (ppu->pixel == 329) feedShiftRegisters(ppu);
-					PUTADDRBUS(ppu, NAMETABLEADDR(ppu));
-					break;
-				case 0b001: ppu->bgNametableLatch = readAddressPPU(ppu, NAMETABLEADDR(ppu)); break;
-				case 0b010: PUTADDRBUS(ppu, ATTRIBUTEADDR(ppu)); break;
-				case 0b011: ppu->bgPaletteLatch = readAddressPPU(ppu, ATTRIBUTEADDR(ppu)); ppu->bgPaletteLatch >>= ((ppu->addressVRAM & 0b1000000) >> 4) | (ppu->addressVRAM & 0b10); break;
-				case 0b100: PUTADDRBUS(ppu, BGPATTERNADDR(ppu)); break;
-				case 0b101: ppu->bgPatternLatch[0] = readAddressPPU(ppu, BGPATTERNADDR(ppu)); break;
-				case 0b110: PUTADDRBUS(ppu, 0b1000 | BGPATTERNADDR(ppu)); break;
-				case 0b111: ppu->bgPatternLatch[1] = readAddressPPU(ppu, 0b1000 | BGPATTERNADDR(ppu)); break;
+			if (isRendering) {
+				switch ((ppu->pixel - 1) & 0b111) {
+					case 0b000: PUTADDRBUS(ppu, NAMETABLEADDR(ppu)); break;
+					case 0b001: ppu->bgNametableLatch = readAddressPPU(ppu, NAMETABLEADDR(ppu)); break;
+					case 0b010: PUTADDRBUS(ppu, ATTRIBUTEADDR(ppu)); break;
+					case 0b011: ppu->bgPaletteLatch = readAddressPPU(ppu, ATTRIBUTEADDR(ppu)); ppu->bgPaletteLatch >>= ((ppu->addressVRAM & 0b1000000) >> 4) | (ppu->addressVRAM & 0b10); break;
+					case 0b100: PUTADDRBUS(ppu, BGPATTERNADDR(ppu)); break;
+					case 0b101: ppu->bgPatternLatch[0] = readAddressPPU(ppu, BGPATTERNADDR(ppu)); break;
+					case 0b110: PUTADDRBUS(ppu, 0b1000 | BGPATTERNADDR(ppu)); break;
+					case 0b111: ppu->bgPatternLatch[1] = readAddressPPU(ppu, 0b1000 | BGPATTERNADDR(ppu)); break;
+				}
 			}
 
 			shiftRegistersPPU(ppu);
 
 		} else {
 			ppu->registers[OAMDATA] = ppu->secondOAM[0];
+			if (ppu->pixel == 337) feedShiftRegisters(ppu);
 
-			if (ppu->pixel & 0b1) {
-				PUTADDRBUS(ppu, NAMETABLEADDR(ppu));
-				if (ppu->pixel == 337) feedShiftRegisters(ppu);
-			} else ppu->bgNametableLatch = readAddressPPU(ppu, NAMETABLEADDR(ppu));
+			if (isRendering) {
+				if (ppu->pixel & 0b1)
+					PUTADDRBUS(ppu, NAMETABLEADDR(ppu));
+				else
+					ppu->bgNametableLatch = readAddressPPU(ppu, NAMETABLEADDR(ppu));
+			}
 		}
 	} else if (ppu->scanline == 241 && ppu->pixel == 1) {
 		ppu->registers[PPUSTATUS] |= STATUS_VBLANK;
@@ -672,7 +701,7 @@ extern inline void tickPPU(PPU *ppu) {
 		ppu->pixel = 0;
 		ppu->scanline++;
 		if (ppu->scanline == 262) ppu->scanline = 0;
-	} else if (ppu->pixel == 340 && ppu->scanline == 261 && ppu->oddFrame && RENDERING(ppu)) {
+	} else if (ppu->pixel == 340 && ppu->scanline == 261 && ppu->oddFrame && isRendering) {
 		ppu->pixel = 0;
 		ppu->scanline = 0;
 	}

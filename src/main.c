@@ -67,7 +67,7 @@ int main(int argc, char *argv[]) {
 		return -0x01;
 	}
 
-	GLFWwindow *window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "NesREV", NULL, NULL);
+	GLFWwindow *window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "NESRev v3.6", NULL, NULL);
 	if (window == NULL) {
 		printf("Fatal error : couldn't create window.\n");
 		glfwTerminate();

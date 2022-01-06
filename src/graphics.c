@@ -17,8 +17,8 @@
 
 // Non-interface functions
 
+// Returns contents of text file in a stack-allocated char *. The returned pointer has to be deallocated with free by callee
 const char *readFile(const char *path) {
-	// Returns contents of text file in a stack-allocated char *. The returned pointer has to be deallocated with free by callee
 	// File is opened in binary mode to avoid problems with reading CRLF (2 chars) when getting file size but only reading LF (1 char) when calling fread
 	FILE *input = fopen(path, "rb");
 	if (input == NULL)
@@ -40,8 +40,8 @@ const char *readFile(const char *path) {
 	return buffer;
 }
 
+// Creates and compiles a shader from a file
 long int createShader(const char *path, GLenum type) {
-	// Creates and compiles a shader from a file
 	unsigned int idShader = glCreateShader(type);
 	const char *sourceShader = readFile(path);
 	if (sourceShader == NULL)
@@ -67,8 +67,8 @@ long int createShader(const char *path, GLenum type) {
 	return idShader;
 }
 
+// Creates and returns the final shader program ID
 long int createProgram(unsigned int idVertexShader, unsigned int idFragmentShader) {
-	// Creates and returns the final shader program ID
 	unsigned int idProgramShader = glCreateProgram();
 	glAttachShader(idProgramShader, idVertexShader);
 	glAttachShader(idProgramShader, idFragmentShader);
@@ -89,8 +89,8 @@ long int createProgram(unsigned int idVertexShader, unsigned int idFragmentShade
 	return idProgramShader;
 }
 
+// Creates and compiles shaders into a shader program and returns it
 long int initShaders(const char *vertexShaderPath, const char *fragmentShaderPath) {
-	// Creates and compiles shaders into a shader program and returns it
 	// Because GLenum expands to unsigned int and we need signed ints for error handling, we use longs to cover the range of unsigned ints while keeping negative numbers.
 	// This may or may not be necessary, as OpenGL seems to assign IDs from 1 going up by 1. However, the specification says there is no guarantee.
 	long int idVertexShader = createShader(vertexShaderPath, GL_VERTEX_SHADER);
@@ -109,9 +109,9 @@ long int initShaders(const char *vertexShaderPath, const char *fragmentShaderPat
 
 // Interface functions
 
+// Sets up vertex information and sends it to bound array and element array buffers
+// Returns a Context object containing all handlers information needed for drawing and terminating
 const Context setupContext(const int width, const int height) {
-	// Sets up vertex information and sends it to bound array and element array buffers
-	// Returns a Context object containing all handlers information needed for drawing and terminating
 	Context context;
 	context.status = false; // The success flag is only set at the end of the operation so we can safely return the context as it is if we encounter an error.
 
@@ -209,10 +209,10 @@ const Context setupContext(const int width, const int height) {
 	return context;
 }
 
+// Draws every pixel with given colors for a single frame
+// This assumes a valid shader program and vertex array object are already in use / bound and vertices / indices data is already sent to the GPU
+// This does not unbind any object already bound by callee, nor does it swap buffers or poll events
 void draw(const Context context, const int width, const int height, const uint8_t * const colors) {
-	// Draws every pixel with given colors for a single frame
-	// This assumes a valid shader program and vertex array object are already in use / bound and vertices / indices data is already sent to the GPU
-	// This does not unbind any object already bound by callee, nor does it swap buffers or poll events
 	glClear(GL_COLOR_BUFFER_BIT);
 
 	glUseProgram(context.idShaderProgram);

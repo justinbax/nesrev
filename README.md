@@ -1,6 +1,6 @@
-# NesREV v3.6
+# NESRev v3.6
 
-NesREV v3.6 (the v3.6 is part of the name, not the actual version number) is a cycle-accurate emulator for the Nintendo Entertainment System (NES). It is built from the ground up in plain C with only OpenGL as graphical interface (and GLEW/GLFW for compatibility). This project also bundles NESGen, an generator for standardized iNes 1.0 (.nes) files from program data (PRG ROM) and graphical data (CHR ROM). As a demonstration, a custom sample NES game is located in `src/asm/sample.asm` to be assembled, then used by NESGen to create a .nes file readable by NesREV v3.6 or another NES emulator.
+NESRev v3.6 (the v3.6 is part of the name, not the actual version number) is a cycle-accurate emulator for the Nintendo Entertainment System (NES). It is built from the ground up in plain C with only OpenGL as graphical interface (and GLEW/GLFW for compatibility). This project also bundles NESGen, an generator for standardized iNes 1.0 (.nes) files from program data (PRG ROM) and graphical data (CHR ROM). As a demonstration, a custom sample NES game is located in `src/asm/sample.asm` to be assembled, then used by NESGen to create a .nes file readable by NESRev v3.6 or another NES emulator.
 
 ## Usage
 `nesrev input`
@@ -36,7 +36,7 @@ Picture processing unit emulation is contained withing `src/ppu.h`. It has a few
 Similar to the difference of the "same" color from one NES to the other and mostly from one CRT TV to the other, the appearance of colors is customizable. Of course, a default and arbitrary palette is provided (`/default.pal`).
 
 ### Cartridges
-The basic cartridge structure is defined in `src/cartridge.h`. All the logic of cartridges (*mappers* in the emulation community) is defined in `src/mapper.h`. Currently, the only type of cartridge handled by NesREV v3.6 is NROM (iNes mapper number 000). Notable NROM games include *Super Mario Bros*, *Donkey Kong*, *Ice Climber* and *Duck Hunt* (probably without light gun; see section on inputs below).
+The basic cartridge structure is defined in `src/cartridge.h`. All the logic of cartridges (*mappers* in the emulation community) is defined in `src/mapper.h`. Currently, the only type of cartridge handled by NESRev v3.6 is NROM (iNes mapper number 000). Notable NROM games include *Super Mario Bros*, *Donkey Kong*, *Ice Climber* and *Duck Hunt* (probably without light gun; see section on inputs below).
 
 ### Input
 Controller reading is handled by `src/input.h` and `src/input.c`. Currently, two standard NES controllers are supported, although the second port is left disconnected and without key bindings.
