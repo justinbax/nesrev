@@ -48,12 +48,6 @@ int main(int argc, char *argv[]) {
 		return -0x08;
 	}
 
-	Cartridge cart;
-	if (loadROMFromFile(&cart, argv[1]) != 0) {
-		printf("Fatal error : couldn't load ROM.\n");
-		return -0x09;
-	}
-
 	// To clarify why OpenGL / GLFW / GLUT setup isn't handled by an interface function :
 	// The main function directly needs the GLFW window in order to process input and check if the main loop should continue.
 	// I think it's therefore straightforward to expect main to create the window and handle it.
@@ -111,6 +105,12 @@ int main(int argc, char *argv[]) {
 		GLFW_KEY_A, GLFW_KEY_D // LEFT, RIGHT mapped to A, D
 	};
 
+	Cartridge cart;
+	if (loadROMFromFile(&cart, argv[1]) != 0) {
+		printf("Fatal error : couldn't load ROM.\n");
+		return -0x09;
+	}
+
 	CPU cpu;
 	PPU ppu;
 	Port ports[2];
@@ -125,7 +125,7 @@ int main(int argc, char *argv[]) {
 	int debugging = DBG_NONE;
 	FILE *logFile = NULL;
 	if (debugging) {
-		FILE *logFile = fopen("log.txt", "w+");
+		logFile = fopen("log.txt", "w+");
 		if (logFile == NULL) {
 			printf("Error : can't open / create log file.\n");
 			debugging = DBG_NONE;
@@ -139,12 +139,14 @@ int main(int argc, char *argv[]) {
 	if (fread(palette, sizeof(uint8_t), 0x40 * 3, paletteFile) != 0x40 * 3) {
 		printf("Fatal error : corrupted default palette file (default.pal).\n");
 		fclose(paletteFile);
+		fclose(logFile);
+		free(colors);
+		freeCartridge(&cart);
 		terminateContext(context);
 		glfwTerminate();
-		free(colors);
-		fclose(logFile);
 		return -0x04;
 	}
+	
 	fclose(paletteFile);
 	loadPalette(&ppu, palette);
 
@@ -196,6 +198,7 @@ int main(int argc, char *argv[]) {
 
 	fclose(logFile);
 	free(colors);
+	freeCartridge(&cart);
 
 	terminateContext(context);
 	glfwTerminate();

@@ -36,7 +36,7 @@ uint8_t readController(Port *port) {
 			}
 		}
 	}
-	return data;// | 0xF7;
+	return data;
 }
 
 void writeController(Port *port, uint8_t data) {

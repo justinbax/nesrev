@@ -132,7 +132,9 @@ extern inline uint8_t flipByte(uint8_t value);
 #define ATTRIBUTEADDR(ppu) (0x23C0 | (ppu->addressVRAM & (VRAM_XNAMETABLE | VRAM_YNAMETABLE)) | ((ppu->addressVRAM & VRAM_COARSEX) >> 2) | ((ppu->addressVRAM & 0b1110000000) >> 4))
 #define BGPATTERNADDR(ppu) (((ppu->registers[PPUCTRL] & CTRL_BGPATTERN) << 8) | (ppu->bgNametableLatch << 4) | ((ppu->addressVRAM & VRAM_FINEY) >> 12))
 // Just trust me for this one
-#define SPRPATTERNADDR(ppu) (((ppu->registers[PPUCTRL] & CTRL_SPRSIZE) ? ((ppu->sprPatternIndex & 0b10000) << 8) | (ppu->sprPatternIndex & (VRAM_XNAMETABLE | VRAM_YNAMETABLE | VRAM_COARSEY)) | ((ppu->sprPatternIndex & 0b1000) << 1) : ((ppu->sprPatternIndex & 0b111111110000) | ((ppu->registers[PPUCTRL] & CTRL_SPRPATTERN) << 9))) | (ppu->sprPatternIndex & 0b111))
+#define SPRPATTERNADDR(ppu) (((ppu->registers[PPUCTRL] & CTRL_SPRSIZE) \
+							? ((ppu->sprPatternIndex & 0b10000) << 8) | (ppu->sprPatternIndex & (VRAM_XNAMETABLE | VRAM_YNAMETABLE | VRAM_COARSEY)) | ((ppu->sprPatternIndex & 0b1000) << 1) \
+							: ((ppu->sprPatternIndex & 0b111111110000) | ((ppu->registers[PPUCTRL] & CTRL_SPRPATTERN) << 9))) | (ppu->sprPatternIndex & 0b111))
 
 
 // Non-interface functions

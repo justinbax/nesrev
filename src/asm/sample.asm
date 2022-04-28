@@ -116,6 +116,7 @@ ReadInput:
 	; lsr ; Button status is now carry flag
 	; pla
 	; rol ; Shifts left, bit 0 is now current button's status
+	; dex
 	; bne ReadInput
 	; sta ControllerMirror
 

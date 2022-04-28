@@ -187,7 +187,7 @@ extern inline void write(CPU *cpu, uint16_t address, uint8_t data) {
 			default: break;
 		}
 	else
-		cartWriteCPU(cpu->ppu->cart, address, data);
+		cartWriteCPU(cpu->ppu->cart, address, data, cpu->cycleCount);
 	
 	cpu->rw = WRITE;
 	cpu->addressPins = address;
