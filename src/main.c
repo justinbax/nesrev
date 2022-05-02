@@ -108,6 +108,8 @@ int main(int argc, char *argv[]) {
 	Cartridge cart;
 	if (loadROMFromFile(&cart, argv[1]) != 0) {
 		printf("Fatal error : couldn't load ROM.\n");
+		terminateContext(context);
+		glfwTerminate();
 		return -0x09;
 	}
 

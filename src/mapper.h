@@ -50,7 +50,7 @@ extern inline uint8_t cartReadPPU(Cartridge *cart, uint16_t address) {
 				// Pattern
 				if (cart->registers[MMC1_REG_CTRL] & 0b10000)
 					return cart->CHR[(address & 0x0FFF) | (cart->registers[address < 0x1000 ? MMC1_REG_CHR1 : MMC1_REG_CHR2] << 12)];
-				return cart->CHR[(address & 0x1FFF) | ((cart->registers[address < 0x1000 ? MMC1_REG_CHR1 : MMC1_REG_CHR2] & 0b11110) << 12)];
+				return cart->CHR[(address & 0x1FFF) | ((cart->registers[MMC1_REG_CHR1] & 0b11110) << 12)];
 			}
 			break;
 	}
@@ -143,33 +143,44 @@ extern inline void cartWriteCPU(Cartridge *cart, uint16_t address, uint16_t valu
 			// PRG ROM; no writes
 			break;
 		case MAPPER_MMC1:
-			// Consecutives writes are ignored
-			if (timestamp <= cart->registers[MMC1_REG_TIMESTAMP] + 1)
-				break;
-			
-			cart->registers[MMC1_REG_TIMESTAMP] = timestamp;
-
-			if (value & 0b10000000) {
-				// We set the register to 1 so we can detect when there has been 5 shifts (5 writes) to dump the shift register's data into one of the other 4 registers
-				cart->registers[MMC1_REG_SHIFT] = 0x01;
-				cart->registers[MMC1_REG_CTRL] |= 0b01100;
+			if (address < 0x8000) {
+				// Write to PRG RAM, if any
+				// TODO
 			} else {
-				cart->registers[MMC1_REG_SHIFT] <<= 1;
-				cart->registers[MMC1_REG_SHIFT] |= (value & 0b1);
+				// Write to cartridge register
 
-				if (cart->registers[MMC1_REG_SHIFT] & 0b00100000) {
-					// Writing sequence completed
-					cart->registers[(address >> 13) & 0b11] = cart->registers[MMC1_REG_SHIFT] & 0b11111;
-					printf("%04X W %02X\n", (address), cart->registers[MMC1_REG_SHIFT]);
-					cart->registers[MMC1_REG_SHIFT] = 0x01;
+				// Consecutives writes are ignored
+				if (timestamp <= cart->registers[MMC1_REG_TIMESTAMP] + 1) {
+					//printf("ignored\n");
+					break;
+				}
 
-					if (((address >> 13) & 0b11) == MMC1_REG_CTRL) {
-						if (!(cart->registers[MMC1_REG_CTRL] & 0b10))
-							cart->mirroringType = MIRROR_1SCREEN;
-						else if (cart->registers[MMC1_REG_CTRL] & 0b1)
-							cart->mirroringType = MIRROR_HORIZONTAL;
-						else
-							cart->mirroringType = MIRROR_VERTICAL;
+				//printf("%04X W %02X (SR before: %02X)\n", (address), value, cart->registers[MMC1_REG_SHIFT]);
+
+				cart->registers[MMC1_REG_TIMESTAMP] = timestamp;
+
+				if (value & 0b10000000) {
+					// We set the register to 1 so we can detect when there has been 5 shifts (5 writes) to dump the shift register's data into one of the other 4 registers
+					cart->registers[MMC1_REG_SHIFT] = 0b100000;
+					cart->registers[MMC1_REG_CTRL] |= 0b01100;
+				} else {
+					cart->registers[MMC1_REG_SHIFT] >>= 1;
+					cart->registers[MMC1_REG_SHIFT] |= (value & 0b1) << 5;
+
+					if (cart->registers[MMC1_REG_SHIFT] & 0b1) {
+						// Writing sequence completed
+						cart->registers[(address >> 13) & 0b11] = cart->registers[MMC1_REG_SHIFT] >> 1;
+						//printf("wrote %02X to %01X.\n", cart->registers[MMC1_REG_SHIFT] >> 1, (address >> 13) & 0b11);
+						cart->registers[MMC1_REG_SHIFT] = 0b100000;
+
+						if (((address >> 13) & 0b11) == MMC1_REG_CTRL) {
+							if (!(cart->registers[MMC1_REG_CTRL] & 0b10))
+								cart->mirroringType = MIRROR_1SCREEN;
+							else if (cart->registers[MMC1_REG_CTRL] & 0b1)
+								cart->mirroringType = MIRROR_HORIZONTAL;
+							else
+								cart->mirroringType = MIRROR_VERTICAL;
+						}
 					}
 				}
 			}

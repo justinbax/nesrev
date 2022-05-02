@@ -45,7 +45,7 @@ int loadROMFromFile(Cartridge *cart, const char *path) {
 		case MAPPER_MMC1:
 			cart->registerCount = 6;
 			CALLOC_REGS(cart);
-			cart->registers[MMC1_REG_SHIFT] = 0x01;
+			cart->registers[MMC1_REG_SHIFT] = 0b100000;
 			cart->registers[MMC1_REG_CTRL] = 0b01100;
 			cart->registers[MMC1_REG_TIMESTAMP] = 0;
 			break;
