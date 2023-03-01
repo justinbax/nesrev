@@ -29,8 +29,9 @@
 #define WINDOW_WIDTH WIDTH_PIXELS * 4
 
 void callbackErrorGL(GLenum source, GLenum type, GLenum id, GLenum severity, GLsizei length, const GLchar *message, const void *userParam) {
-	if (type == GL_DEBUG_TYPE_ERROR)
+	if (type == GL_DEBUG_TYPE_ERROR) {
 		printf("OpenGL Error 0x%X from 0x%X : %s (severity : 0x%X)\n", type, id, message, severity);
+	}
 }
 
 void callbackErrorGLFW(int code, const char *description) {

@@ -12,7 +12,7 @@
 
 #define PORT_STROBE 0b1
 
-typedef struct {
+typedef struct Port {
 	uint8_t inputType;
 	uint8_t control;
 	uint32_t reg;

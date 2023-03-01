@@ -2,6 +2,13 @@
 #include "cpu.h"
 #include "ppu.h"
 
+#define MIRROR_HORZ_ADDR(address) ((address & 0x3FF) | ((address >> 1) & 0x400))
+#define MIRROR_VERT_ADDR(address) (address & 0x7FF)
+#define MIRROR_1SCA_ADDR(address) (address & 0x3FF)
+#define MIRROR_1SCB_ADDR(address) ((address & 0x3FF) | 0x400)
+
+// TODO deal with ROM vs RAM
+
 // TODO seperate mapper logic
 
 void initBus(Bus *bus, CPU *cpu, PPU *ppu, Port *ports, Cartridge *cartridge) {
@@ -46,26 +53,28 @@ uint8_t cpuRead(Bus *bus, uint16_t address) {
 				if (address < 0x8000) {
 					// TODO the same as NROM.
 					result = 0x00;
-				} else if (bus->cartridge->registers[MMC1_REG_CTRL] & 0b01000) {
+					if (address >= 0x6000 && bus->cartridge->persistentRAM) {
+						result = bus->cartridge->persistentRAM[address - 0x6000];
+					}
+				} else if (!(bus->cartridge->registers[MMC1_REG_CTRL] & 0b01000)) {
 					// 32K mode
 					result = bus->cartridge->PRG[((address - 0x8000) | ((bus->cartridge->registers[MMC1_REG_PRG] & 0b1110) << 14)) & (bus->cartridge->PRGsize - 1)];
-				} else if (address < 0xC000) {
-					// First 16K mode
-					if (bus->cartridge->registers[MMC1_REG_CTRL] & 0b00100) {
-						// Fixed to first bank
-						result = bus->cartridge->PRG[(address - 0x8000) & (bus->cartridge->PRGsize - 1)];
+				} else if (!(bus->cartridge->registers[MMC1_REG_CTRL] & 0b00100)) {
+					// First 16K is fixed, second is switchable
+					if (address < 0xC000) {
+						result = bus->cartridge->PRG[(address & 0x7FFF)];
 					} else {
-						result = bus->cartridge->PRG[((address - 0x8000) | (bus->cartridge->registers[MMC1_REG_PRG] << 14)) & (bus->cartridge->PRGsize - 1)];
+						result = bus->cartridge->PRG[((address & 0x7FFF) | (bus->cartridge->registers[MMC1_REG_PRG] << 14)) & (bus->cartridge->PRGsize - 1)];
 					}
 				} else {
-					// Last 16K mode
-					if (bus->cartridge->registers[MMC1_REG_CTRL] & 0b00100) {
-						result = bus->cartridge->PRG[((address - 0xC000) | (bus->cartridge->registers[MMC1_REG_PRG] << 14)) & (bus->cartridge->PRGsize - 1)];
+					// First 16K is switchable, second is fixed
+					if (address < 0xC000) {
+						result = bus->cartridge->PRG[((address & 0x7FFF) | (bus->cartridge->registers[MMC1_REG_PRG] << 14)) & (bus->cartridge->PRGsize - 1)];
 					} else {
-						// Fixed to last bank
-						result = bus->cartridge->PRG[((address - 0xC000) | (0xF << 14)) & (bus->cartridge->PRGsize - 1)];
+						result = bus->cartridge->PRG[((address & 0x7FFF) | (0xFF << 14)) & (bus->cartridge->PRGsize - 1)];
 					}
 				}
+
 
 				break;
 			
@@ -111,20 +120,15 @@ void cpuWrite(Bus *bus, uint16_t address, uint8_t data) {
 				break;
 
 			case MAPPER_MMC1:
-				if (address < 0x8000) {
-					// Write to PRG RAM, if any
-					// TODO
+				if (address >= 0x6000 && address < 0x8000 && bus->cartridge->persistentRAM) {
+					bus->cartridge->persistentRAM[address - 0x6000] = data;
 				} else {
 					// Write to cartridge register
 
 					// Consecutives writes are ignored
-					// TODO delete these printfs (more below)
 					if (bus->cpu->cycleCount <= bus->cartridge->registers[MMC1_REG_TIMESTAMP] + 1) {
-						//printf("ignored\n");
 						break;
 					}
-
-					//printf("%04X W %02X (SR before: %02X)\n", (address), data, bus->cartridge->registers[MMC1_REG_SHIFT]);
 
 					bus->cartridge->registers[MMC1_REG_TIMESTAMP] = bus->cpu->cycleCount;
 
@@ -139,16 +143,17 @@ void cpuWrite(Bus *bus, uint16_t address, uint8_t data) {
 						if (bus->cartridge->registers[MMC1_REG_SHIFT] & 0b1) {
 							// Writing sequence completed
 							bus->cartridge->registers[(address >> 13) & 0b11] = bus->cartridge->registers[MMC1_REG_SHIFT] >> 1;
+							// TODO delete these printfs
 							//printf("wrote %02X to %01X.\n", bus->cartridge->registers[MMC1_REG_SHIFT] >> 1, (address >> 13) & 0b11);
 							bus->cartridge->registers[MMC1_REG_SHIFT] = 0b100000;
 
 							if (((address >> 13) & 0b11) == MMC1_REG_CTRL) {
-								if (!(bus->cartridge->registers[MMC1_REG_CTRL] & 0b10))
-									bus->cartridge->mirroringType = MIRROR_1SCREEN;
-								else if (bus->cartridge->registers[MMC1_REG_CTRL] & 0b1)
-									bus->cartridge->mirroringType = MIRROR_HORIZONTAL;
-								else
-									bus->cartridge->mirroringType = MIRROR_VERTICAL;
+								switch (bus->cartridge->registers[MMC1_REG_CTRL] & 0b11) {
+									case 0b00: bus->cartridge->mirroringType = MIRROR_1SCREENA; break;
+									case 0b01: bus->cartridge->mirroringType = MIRROR_1SCREENB; break;
+									case 0b10: bus->cartridge->mirroringType = MIRROR_VERTICAL; break;
+									case 0b11: bus->cartridge->mirroringType = MIRROR_HORIZONTAL; break;
+								}
 							}
 						}
 					}
@@ -191,6 +196,7 @@ uint8_t ppuRead(Bus *bus, uint16_t address) {
 		case MAPPER_MMC1:
 			if (address >= 0x2000) {
 				// Nametable
+				// We rely on the register and not on bus->cartridge->mirroringType because I'm the developper and I get to make the rules
 				switch (bus->cartridge->registers[MMC1_REG_CTRL] & 0b00011) {
 					case 0b00:
 						return bus->cartridge->internalVRAM[MIRROR_1SCA_ADDR(address)];

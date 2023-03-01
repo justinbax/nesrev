@@ -15,6 +15,7 @@ void freeCartridge(Cartridge *cart) {
 	free(cart->PRG);
 	free(cart->CHR);
 	free(cart->registers);
+	free(cart->persistentRAM);
 }
 
 int loadROMFromFile(Cartridge *cart, const char *path) {
@@ -37,6 +38,15 @@ int loadROMFromFile(Cartridge *cart, const char *path) {
 	cart->CHRsize = flags[5] * 0x2000;
 	cart->mapperID = flags[6] >> 4;
 	cart->mapperID |= flags[7] & 0b11110000;
+	cart->persistentRAM = NULL;
+
+	if (flags[6] & HEADER6_NONVOLATILE) {
+		cart->persistentRAM = malloc(0x2000 * sizeof(uint8_t));
+		if (!cart->persistentRAM) {
+			fclose(input);
+			return -0x06;
+		}
+	}
 
 	switch (cart->mapperID) {
 		case MAPPER_NROM:

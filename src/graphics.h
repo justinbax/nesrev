@@ -6,7 +6,7 @@
 
 #define COLOR_COMPONENTS 3 // Number of components to a color (RGB is 3, RGBA is 4)
 
-typedef struct {
+typedef struct Context {
 	unsigned int idVertexArray;
 	unsigned int idVertexBuffer;
 	unsigned int idElementBuffer;

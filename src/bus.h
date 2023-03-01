@@ -5,21 +5,12 @@
 #include "cartridge.h"
 
 // TODO maybe the components need an extra interface for things
-// TODO at this point the entire mapper.h file is copied into bus.h and bus.c
-
-// TODO deal with ROM vs RAM
-
-#define MIRROR_HORZ_ADDR(address) ((address & 0x3FF) | ((address >> 1) & 0x400))
-#define MIRROR_VERT_ADDR(address) (address & 0x7FF)
-#define MIRROR_1SCA_ADDR(address) (address & 0x3FF)
-#define MIRROR_1SCB_ADDR(address) ((address & 0x3FF) | 0x400)
 
 // Forward declarations so we don't need includes and there is no circular dependency
-
 typedef struct CPU CPU;
 typedef struct PPU PPU;
 
-typedef struct {
+typedef struct Bus {
 	CPU *cpu;
 	PPU *ppu;
 	Port *ports;
