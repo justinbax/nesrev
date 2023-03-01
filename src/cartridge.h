@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "bus.h"
+
 #define MIRROR_UNKNOWN 0
 #define MIRROR_1SCREENA 1
 #define MIRROR_1SCREENB 2
@@ -37,5 +39,10 @@ typedef struct Cartridge {
 	uint8_t *registers;
 	int registerCount; // TODO think about if we need this
 } Cartridge;
+
+uint8_t cartridgeReadPRG(Bus *bus, uint16_t address);
+void cartridgeWritePRG(Bus *bus, uint16_t address, uint8_t data);
+uint8_t cartridgeReadCHR(Bus *bus, uint16_t address);
+void cartridgeWriteCHR(Bus *bus, uint16_t address, uint8_t data);
 
 #endif // ifndef CARTRIDGE_H
