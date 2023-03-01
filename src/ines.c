@@ -39,7 +39,9 @@ int loadROMFromFile(Cartridge *cart, const char *path) {
 	cart->mapperID = flags[6] >> 4;
 	cart->mapperID |= flags[7] & 0b11110000;
 	cart->persistentRAM = NULL;
+	cart->CHRisRAM = false;
 
+	// TODO select option for random- / 0- / 1- filled RAM (both PRG and CHR (below))
 	if (flags[6] & HEADER6_NONVOLATILE) {
 		cart->persistentRAM = malloc(0x2000 * sizeof(uint8_t));
 		if (!cart->persistentRAM) {
@@ -56,9 +58,8 @@ int loadROMFromFile(Cartridge *cart, const char *path) {
 		case MAPPER_MMC1:
 			cart->registerCount = 6;
 			CALLOC_REGS(cart);
-			cart->registers[MMC1_REG_SHIFT] = 0b100000;
-			cart->registers[MMC1_REG_CTRL] = 0b01100;
-			cart->registers[MMC1_REG_TIMESTAMP] = 0;
+			cart->registers[MMC1_REG_SHIFT] = MMC1_REG_SHIFT_DEFAULTVALUE;
+			cart->registers[MMC1_REG_CTRL] = MMC1_REG_CTRL_DEFAULTVALUE;
 			break;
 		default:
 			fclose(input);
@@ -82,6 +83,11 @@ int loadROMFromFile(Cartridge *cart, const char *path) {
 
 	// TODO error handling is the absolute worst
 	cart->PRG = malloc(cart->PRGsize);
+	if (cart->CHRsize == 0) {
+		cart->CHRisRAM = true;
+		cart->CHRsize = 0x2000;
+	}
+
 	cart->CHR = malloc(cart->CHRsize);
 	if (!cart->PRG || !cart->CHR) {
 		freeCartridge(cart);
@@ -90,7 +96,9 @@ int loadROMFromFile(Cartridge *cart, const char *path) {
 	}
 
 	uint8_t status = (fread(cart->PRG, sizeof(uint8_t), cart->PRGsize, input) != cart->PRGsize);
-	status |= (fread(cart->CHR, sizeof(uint8_t), cart->CHRsize, input) != cart->CHRsize);
+	if (!cart->CHRisRAM) {
+		status |= (fread(cart->CHR, sizeof(uint8_t), cart->CHRsize, input) != cart->CHRsize);
+	}
 
 	fclose(input);
 

@@ -22,6 +22,12 @@
 #define MMC1_REG_PRG 3
 #define MMC1_REG_SHIFT 4
 #define MMC1_REG_TIMESTAMP 5
+#define MMC1_CTRL_PRG16K_ENABLE 0b01000
+#define MMC1_CTRL_PRG16K_SELECT 0b00100
+#define MMC1_CTRL_CHR4K_ENABLE 0b10000
+#define MMC1_RESET_BIT 0b10000000
+#define MMC1_REG_CTRL_DEFAULTVALUE 0b01100
+#define MMC1_REG_SHIFT_DEFAULTVALUE 0b100000
 
 typedef struct Cartridge {
 	uint16_t mapperID;
@@ -35,6 +41,7 @@ typedef struct Cartridge {
 	uint32_t CHRsize;
 
 	uint8_t *persistentRAM;
+	bool CHRisRAM;
 
 	uint8_t *registers;
 	int registerCount; // TODO think about if we need this

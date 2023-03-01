@@ -137,6 +137,7 @@ void initCPU(CPU *cpu, Bus *bus) {
 	cpu->step = RESET_STEP;
 	cpu->IRQPin = cpu->NMIPin = HIGH;
 	cpu->nextIsIRQ = cpu->nextIsNMI = false;
+	cpu->IRQPending = cpu->NMIPending = false;
 	
 	cpu->bus = bus;
 
