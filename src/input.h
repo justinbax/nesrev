@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdint.h>
+
 #include "GLFW/glfw3.h"
 
 #define PORT_NONE 0

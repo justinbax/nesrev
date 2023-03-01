@@ -6,6 +6,7 @@
 #include "GLFW/glfw3.h"
 
 #include "graphics.h"
+#include "bus.h"
 #include "cpu.h"
 #include "ppu.h"
 #include "ines.h"
@@ -105,22 +106,24 @@ int main(int argc, char *argv[]) {
 		GLFW_KEY_A, GLFW_KEY_D // LEFT, RIGHT mapped to A, D
 	};
 
+	// Initialization of all components
+	Bus bus;
+	CPU cpu;
+	PPU ppu;
+	Port ports[2];
 	Cartridge cart;
+	initBus(&bus, &cpu, &ppu, ports, &cart);
+	initCPU(&cpu, &bus);
+	initPPU(&ppu, colors, &bus);
+	initPort(&ports[0], PORT_STDCONTROLLER, window, keys, 8);
+	initPort(&ports[1], PORT_NONE, window, NULL, 0);
+
 	if (loadROMFromFile(&cart, argv[1]) != 0) {
 		printf("Fatal error : couldn't load ROM.\n");
 		terminateContext(context);
 		glfwTerminate();
 		return -0x09;
 	}
-
-	CPU cpu;
-	PPU ppu;
-	Port ports[2];
-
-	initPort(&ports[0], PORT_STDCONTROLLER, window, keys, 8);
-	initPort(&ports[1], PORT_NONE, window, NULL, 0);
-	initPPU(&ppu, colors, &cart);
-	initCPU(&cpu, &ppu, ports);
 
 	// Debug logging
 	// TODO remove this

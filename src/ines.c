@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+
 #include "ines.h"
 
 #define HEADER6_MIRRORING 0b00000001
@@ -53,8 +54,6 @@ int loadROMFromFile(Cartridge *cart, const char *path) {
 			fclose(input);
 			return -0x05;
 	}
-
-	cart->registers = calloc(1, sizeof(uint8_t) * cart->registerCount);
 
 	cart->mirroringType = (flags[6] & HEADER6_MIRRORING ? MIRROR_VERTICAL : MIRROR_HORIZONTAL);
 	if (flags[6] & HEADER6_4SCREEN)
