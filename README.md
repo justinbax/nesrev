@@ -46,10 +46,10 @@ The basic cartridge structure is defined in `src/cartridge.h`. All the logic of 
 
 #### Mappers supported
 
-| Name | Mapper Number | Notes |
+| Name | Mapper Number | Approx. % of games | Notes |
 | --- | --- | --- | --- |
-| NROM | 000 |  |
-| MMC1 | 001 | Only basic variant (no PRG RAM) |
+| NROM | 000 | 10.0% |  |
+| MMC1 | 001 | 27.8% |  |
 
 Currently, RAM and saved (persistent) memory are not supported. This applies to all mappers.
 
@@ -73,7 +73,7 @@ Other controllers like the Zapper are not handled.
 
 ## Graphical interface
 
-NESRev uses a custom pixel-rendering engine, written directly in OpenGL. For the sake of compatibility, GLFW and GLEW are used alongside OpenGL to provide cross-platform support for windows and input (GLFW) and getting pointers to OpenGL functions (GLEW). I am looking forward to learn how both of these work so I may one day replace them with my own code, using only C and OpenGL (this remains to be confirmed).
+NESRev uses a custom pixel-rendering engine, written directly in OpenGL. For the sake of compatibility, GLFW and GLEW are used alongside OpenGL to provide cross-platform support for windows and input (GLFW) and getting pointers to OpenGL functions (GLEW). I am looking forward to learn how both of these work so I may one day replace them with my own code, using only C and OpenGL.
 
 Both libraries and OpenGL are initialized in the main function (naturally), but everything else regarding OpenGL is abstracted in `graphics.h` with simple functions: simply initialize a `Context` with `createContext`, hold onto it, fill an array of the colors you want to draw and `draw` with the context you were given. `terminateContext` assures everything is terminated correctly.
 
