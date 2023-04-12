@@ -9,6 +9,7 @@
 #include "bus.h"
 #include "cpu.h"
 #include "ppu.h"
+#include "apu.h"
 #include "ines.h"
 
 #ifdef _WIN32
@@ -111,11 +112,13 @@ int main(int argc, char *argv[]) {
 	Bus bus;
 	CPU cpu;
 	PPU ppu;
+	APU apu;
 	Port ports[2];
 	Cartridge cart;
-	initBus(&bus, &cpu, &ppu, ports, &cart);
+	initBus(&bus, &cpu, &ppu, &apu, ports, &cart);
 	initCPU(&cpu, &bus);
 	initPPU(&ppu, colors, &bus);
+	initAPU(&apu);
 	initPort(&ports[0], PORT_STDCONTROLLER, window, keys, 8);
 	initPort(&ports[1], PORT_NONE, window, NULL, 0);
 
@@ -173,10 +176,12 @@ int main(int argc, char *argv[]) {
 				tickPPU(&ppu);
 				// PHI2
 				cpu.NMIPin = ppu.outInterrupt;
+				cpu.IRQPin = apu.irqOutDMC || apu.irqOutFrame;
 				pollInterrupts(&cpu);
 				tickPPU(&ppu);
 				// PHI1
 				tickCPU(&cpu);
+				//tickAPU(&apu);
 			}
 
 			draw(context, WIDTH_PIXELS, HEIGHT_PIXELS, colors);

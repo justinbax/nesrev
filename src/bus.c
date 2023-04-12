@@ -1,11 +1,13 @@
 #include "bus.h"
 #include "cpu.h"
 #include "ppu.h"
+#include "apu.h"
 #include "cartridge.h"
 
-void initBus(Bus *bus, CPU *cpu, PPU *ppu, Port *ports, Cartridge *cartridge) {
+void initBus(Bus *bus, CPU *cpu, PPU *ppu, APU *apu, Port *ports, Cartridge *cartridge) {
 	bus->cpu = cpu;
 	bus->ppu = ppu;
+	bus->apu = apu;
 	bus->ports = ports;
 	bus->cartridge = cartridge;
 }
@@ -21,6 +23,7 @@ uint8_t cpuRead(Bus *bus, uint16_t address) {
 	} else if (address < 0x4020) {
 		switch (address) {
 			case OAMDMA: result = 0x00; break;
+			case APU_CTRL: result = readRegisterAPU(bus->apu, address); break;
 			case JOY1:
 			case JOY2: result = readController(&bus->ports[address - JOY1]); break;
 			default: result = 0x00; break;
@@ -54,7 +57,7 @@ void cpuWrite(Bus *bus, uint16_t address, uint8_t data) {
 				break;
 			case JOY1:
 			case JOY2: writeController(&bus->ports[0], data); writeController(&bus->ports[1], data); break;
-			default: break;
+			default: writeRegisterAPU(bus->apu, address, data); break;
 		}
 	} else {
 		// Mapped to cartridge

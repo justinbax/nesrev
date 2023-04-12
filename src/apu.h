@@ -30,9 +30,10 @@
 // TODO open bus, particularly the internal CPU open bus behavious when reading 0x4015
 
 typedef struct APU {
-	uint8_t registers[0x17]; // There are unused registers but this makes memory mapping easier
+	uint8_t registers[0x18]; // There are unused registers but this makes memory mapping easier
 	uint32_t frameCounterDivider;
-	bool irqOut;
+	bool irqOutFrame;
+	bool irqOutDMC;
 
 	uint8_t square1LengthCounter;
 	uint8_t square2LengthCounter;
@@ -41,11 +42,19 @@ typedef struct APU {
 
 	uint8_t square1SweepDivider;
 	uint8_t square2SweepDivider;
+	bool reloadSquare1Sweep;
+	bool reloadSquare2Sweep;
 
 	uint16_t square1PeriodTimer;
 	uint16_t square2PeriodTimer;
+	uint16_t trianglePeriodTimer;
 
 	uint8_t triangleLinearCounter;
+	bool reloadTriangleLinearCounter;
+	uint8_t triangleWaveformSequencer;
+
+	double squareMixerLookup[31];
+	double tndMixerLookup[203];
 } APU;
 
 // Interface functions
@@ -55,6 +64,7 @@ void writeRegisterAPU(APU *apu, uint16_t address, uint8_t data);
 void tickAPU(APU *apu);
 
 // Non-interface functions
+double mixChannels(APU *apu, uint8_t square1In, uint8_t square2In, uint8_t triangleIn, uint8_t noiseIn, uint8_t DMCIn);
 void clockLengthCounters(APU *apu);
 void clockSweepUnits(APU *apu);
 void clockLinearCounter(APU *apu);

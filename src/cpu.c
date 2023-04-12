@@ -132,7 +132,8 @@ void initCPU(CPU *cpu, Bus *bus) {
 	cpu->A = cpu->X = cpu->Y = 0;
 	cpu->PCH = 0x00;
 	cpu->PCL = 0xFF;
-	cpu->negFlag = cpu->oflowFlag = cpu->decFlag = cpu->noIRQFlag = cpu->zeroFlag = cpu->carryFlag = false;
+	cpu->negFlag = cpu->oflowFlag = cpu->decFlag = cpu->zeroFlag = cpu->carryFlag = false;
+	cpu->noIRQFlag = true;
 	cpu->SP = cpu->IR = 0x00;
 	cpu->step = RESET_STEP;
 	cpu->IRQPin = cpu->NMIPin = HIGH;
@@ -157,7 +158,7 @@ void initCPU(CPU *cpu, Bus *bus) {
 }
 
 void pollInterrupts(CPU *cpu) {
-	cpu->IRQPending = !cpu->IRQPin;
+	cpu->IRQPending = !cpu->IRQPin && !cpu->noIRQFlag;
 	if (cpu->prevNMI && !cpu->NMIPin) cpu->NMIPending = true;
 	cpu->prevNMI = cpu->NMIPin;
 }
