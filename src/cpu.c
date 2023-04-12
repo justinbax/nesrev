@@ -187,6 +187,7 @@ void tickCPU(CPU *cpu) {
 		cpu->IR = 0x00;
 		cpu->step = IRQ_STEP;
 		cpu->nextIsIRQ = false;
+		printf("IRQ\n");
 	}
 	
 	if (cpu->OAMDMAstatus > DMA_WAIT) {

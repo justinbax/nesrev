@@ -49,12 +49,17 @@ typedef struct APU {
 	uint16_t square2PeriodTimer;
 	uint16_t trianglePeriodTimer;
 
+	uint8_t square1WaveformSequencer;
+	uint8_t square2WaveformSequencer;
+
 	uint8_t triangleLinearCounter;
 	bool reloadTriangleLinearCounter;
 	uint8_t triangleWaveformSequencer;
 
 	double squareMixerLookup[31];
 	double tndMixerLookup[203];
+
+	float currentSample;
 } APU;
 
 // Interface functions
@@ -64,7 +69,7 @@ void writeRegisterAPU(APU *apu, uint16_t address, uint8_t data);
 void tickAPU(APU *apu);
 
 // Non-interface functions
-double mixChannels(APU *apu, uint8_t square1In, uint8_t square2In, uint8_t triangleIn, uint8_t noiseIn, uint8_t DMCIn);
+float mixChannels(APU *apu, uint8_t square1In, uint8_t square2In, uint8_t triangleIn, uint8_t noiseIn, uint8_t DMCIn);
 void clockLengthCounters(APU *apu);
 void clockSweepUnits(APU *apu);
 void clockLinearCounter(APU *apu);

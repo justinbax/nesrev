@@ -23,8 +23,15 @@ const uint8_t triangleWaveform[0x20] = {
 	0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15
 };
 
+const bool squareWaveform[4][8] = {
+	{0, 1, 0, 0, 0, 0, 0, 0},
+	{0, 1, 1, 0, 0, 0, 0, 0},
+	{0, 1, 1, 1, 1, 0, 0, 0},
+	{1, 0, 0, 1, 1, 1, 1, 1}
+};
+
 // Non-interface functions
-double mixChannels(APU *apu, uint8_t square1In, uint8_t square2In, uint8_t triangleIn, uint8_t noiseIn, uint8_t DMCIn) {
+float mixChannels(APU *apu, uint8_t square1In, uint8_t square2In, uint8_t triangleIn, uint8_t noiseIn, uint8_t DMCIn) {
 	double squareOut = apu->squareMixerLookup[square1In + square2In];
 	double tndOut = apu->tndMixerLookup[3 * triangleIn + 2 * noiseIn + DMCIn];
 	double output = squareOut + tndOut;
@@ -117,6 +124,7 @@ void initAPU(APU *apu) {
 	apu->square1PeriodTimer = apu->square2PeriodTimer = apu->trianglePeriodTimer = 0;
 	apu->triangleLinearCounter = 0;
 	apu->reloadTriangleLinearCounter = false;
+	apu->square1WaveformSequencer = apu->square2WaveformSequencer = 0;
 	apu->triangleWaveformSequencer = 0;
 
 	apu->squareMixerLookup[0] = apu->tndMixerLookup[0] = 0.0f;
@@ -127,6 +135,8 @@ void initAPU(APU *apu) {
 	for (int i = 1; i < 203; i++) {
 		apu->tndMixerLookup[i] = 163.67f / (24329.0f / i + 100);
 	}
+
+	apu->currentSample = 0.0f;
 }
 
 uint8_t readRegisterAPU(APU *apu, uint16_t address) {
@@ -192,6 +202,7 @@ void writeRegisterAPU(APU *apu, uint16_t address, uint8_t data) {
 }
 
 void tickAPU(APU *apu) {
+	apu->frameCounterDivider++;
 	if (apu->frameCounterDivider >= 28828 && !(apu->registers[APU_FRAMECOUNTER] & 0b01000000) && !FRAMECOUNTER_5STEP(apu)) {
 		apu->irqOutFrame = true;
 	}
@@ -200,14 +211,16 @@ void tickAPU(APU *apu) {
 		clockSweepUnits(apu);
 	}
 	if (apu->frameCounterDivider == 7457 || apu->frameCounterDivider == 14913 || apu->frameCounterDivider == 22371) {
-		// TODO Clock envelopes and triangle linear counter
+		clockLinearCounter(apu);
+		clockEnvelopes(apu);
 	}
 	if ((apu->frameCounterDivider == 29829 && !FRAMECOUNTER_5STEP(apu)) || (apu->frameCounterDivider == 37281 && FRAMECOUNTER_5STEP(apu))) {
-		// TODO Clock envelopes and triangle linear counter
+		clockLinearCounter(apu);
+		clockLinearCounter(apu);
 		clockLengthCounters(apu);
 		clockSweepUnits(apu);
+		apu->frameCounterDivider = 0;
 	}
-	apu->frameCounterDivider++;
 
 	// TODO clock square channels and noise and DMC
 	uint8_t square1Output = 0;
@@ -216,17 +229,46 @@ void tickAPU(APU *apu) {
 	uint8_t noiseOutput = 0;
 	uint8_t DMCOutput = 0;
 
-	// Clocks triangle channel every CPU clock
+	// Square channels
+	if (apu->square1PeriodTimer == 0) {
+		apu->square1PeriodTimer = SQUARE1PERIOD(apu) + 1;
+		if (apu->square1LengthCounter > 0) {
+			apu->square1WaveformSequencer++;
+		}
+	}
+	if (apu->square2PeriodTimer == 0) {
+		apu->square2PeriodTimer = SQUARE2PERIOD(apu) + 1;
+		if (apu->square2LengthCounter > 0) {
+			apu->square2WaveformSequencer++;
+		}
+	}
+
+	// Triangle channel
 	if (apu->trianglePeriodTimer == 0) {
 		apu->trianglePeriodTimer = TRIANGLEPERIOD(apu) + 1;
-		if (apu->triangleLengthCounter && apu->triangleLinearCounter) {
+		if (apu->triangleLengthCounter > 0 && apu->triangleLinearCounter > 0) {
 			apu->triangleWaveformSequencer++;
 		}
 	}
+
+	// Clocks square channels every second CPU cycle
+	if (apu->frameCounterDivider & 0b1) {
+		apu->square1PeriodTimer--;
+		apu->square2PeriodTimer--;
+	}
+
+	// Clocks triangle channel every CPU cycle
 	apu->trianglePeriodTimer--;
+
+	square1Output = squareWaveform[apu->registers[APU_SQUARE1_ENVELOPE_MISC >> 6]][apu->square1WaveformSequencer & 0x07];
+	square1Output *= apu->registers[APU_SQUARE1_ENVELOPE_MISC] & 0b00001111;
+	square2Output = squareWaveform[apu->registers[APU_SQUARE2_ENVELOPE_MISC >> 6]][apu->square2WaveformSequencer & 0x07];
+	square2Output *= apu->registers[APU_SQUARE2_ENVELOPE_MISC] & 0b00001111;
+	// TODO envelope
 	triangleOutput = triangleWaveform[apu->triangleWaveformSequencer & 0x1F];
 
-	double output = mixChannels(apu, square1Output, square2Output, triangleOutput, noiseOutput, DMCOutput);
+	float output = mixChannels(apu, 0, 0, triangleOutput, noiseOutput, DMCOutput);
+	apu->currentSample = output;
 }
 
 #undef FRAMECOUNTER_5STEP

@@ -11,6 +11,7 @@
 #include "ppu.h"
 #include "apu.h"
 #include "ines.h"
+#include "audio.h"
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -122,6 +123,9 @@ int main(int argc, char *argv[]) {
 	initPort(&ports[0], PORT_STDCONTROLLER, window, keys, 8);
 	initPort(&ports[1], PORT_NONE, window, NULL, 0);
 
+	AudioEngine engine;
+	initAudioEngine(&engine);
+
 	if (loadROMFromFile(&cart, argv[1]) != 0) {
 		printf("Fatal error : couldn't load ROM.\n");
 		terminateContext(context);
@@ -176,12 +180,13 @@ int main(int argc, char *argv[]) {
 				tickPPU(&ppu);
 				// PHI2
 				cpu.NMIPin = ppu.outInterrupt;
-				cpu.IRQPin = apu.irqOutDMC || apu.irqOutFrame;
+				cpu.IRQPin = !(apu.irqOutDMC || apu.irqOutFrame);
 				pollInterrupts(&cpu);
 				tickPPU(&ppu);
 				// PHI1
 				tickCPU(&cpu);
-				//tickAPU(&apu);
+				tickAPU(&apu);
+				newSamplef(&engine, apu.currentSample);
 			}
 
 			draw(context, WIDTH_PIXELS, HEIGHT_PIXELS, colors);
@@ -210,6 +215,8 @@ int main(int argc, char *argv[]) {
 	fclose(logFile);
 	free(colors);
 	freeCartridge(&cart);
+
+	terminateAudioEngine(&engine);
 
 	terminateContext(context);
 	glfwTerminate();
