@@ -18,7 +18,7 @@
 #define APU_TRIANGLE_TIMERLOW 0x0A
 #define APU_TRIANGLE_TIMERHIGH 0x0B
 #define APU_NOISE_ENVELOPE 0x0C
-#define APU_NOISE_LOOP 0x0E
+#define APU_NOISE_PERIOD 0x0E
 #define APU_NOISE_COUNTER 0x0F
 #define APU_DMC_LOOP 0x10
 #define APU_DMC_DIRECTLOAD 0x11
@@ -58,6 +58,7 @@ typedef struct APU {
 	uint16_t square1PeriodTimer;
 	uint16_t square2PeriodTimer;
 	uint16_t trianglePeriodTimer;
+	uint16_t noisePeriodTimer;
 
 	uint8_t square1WaveformSequencer;
 	uint8_t square2WaveformSequencer;
@@ -65,6 +66,8 @@ typedef struct APU {
 	uint8_t triangleLinearCounter;
 	bool reloadTriangleLinearCounter;
 	uint8_t triangleWaveformSequencer;
+
+	uint16_t noiseShiftRegister;
 
 	double squareMixerLookup[31];
 	double tndMixerLookup[203];

@@ -18,6 +18,10 @@ const uint8_t lengthCounterLookup[0x20] = {
 	0x0C, 0x10, 0x18, 0x12, 0x30, 0x14, 0x60, 0x16, 0xC0, 0x18, 0x48, 0x1A, 0x10, 0x1C, 0x20, 0x1E
 };
 
+const uint16_t noisePeriodLookup[0x10] = {
+	4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068
+};
+
 const uint8_t triangleWaveform[0x20] = {
 	15, 14, 13, 12, 11, 10,  9,  8,  7,  6,  5,  4,  3,  2,  1,  0,
 	0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15
@@ -146,11 +150,12 @@ void initAPU(APU *apu) {
 	apu->reloadSquare1Sweep = apu->reloadSquare2Sweep = false;
 	apu->square1EnvelopeVolumeCounter = apu->square2EnvelopeVolumeCounter = apu->square1EnvelopeDivider = apu->square2EnvelopeDivider = 0;
 	apu->square1RestartEnvelope = apu->square2RestartEnvelope = false;
-	apu->square1PeriodTimer = apu->square2PeriodTimer = apu->trianglePeriodTimer = 0;
+	apu->square1PeriodTimer = apu->square2PeriodTimer = apu->trianglePeriodTimer = apu->noisePeriodTimer = 0;
+	apu->square1WaveformSequencer = apu->square2WaveformSequencer = 0;
 	apu->triangleLinearCounter = 0;
 	apu->reloadTriangleLinearCounter = false;
-	apu->square1WaveformSequencer = apu->square2WaveformSequencer = 0;
 	apu->triangleWaveformSequencer = 0;
+	apu->noiseShiftRegister = 1;
 
 	apu->squareMixerLookup[0] = apu->tndMixerLookup[0] = 0.0f;
 	for (int i = 1; i < 31; i++) {
@@ -253,20 +258,16 @@ void tickAPU(APU *apu) {
 	// Clocks every channel's timer
 	// Square channels
 	uint16_t square1Period = SQUARE1PERIOD(apu);
-	bool square1Muted = (square1Period < 8) || (targetSweepPeriod(apu->registers[APU_SQUARE1_SWEEP], square1Period, false) > 0x7FF);
+	bool square1Muted = (square1Period < 8) || (targetSweepPeriod(apu->registers[APU_SQUARE1_SWEEP], square1Period, false) > 0x7FF) || (apu->square1LengthCounter == 0);
 	if (apu->square1PeriodTimer == 0) {
 		apu->square1PeriodTimer = square1Period + 1;
-		if (apu->square1LengthCounter > 0) {
-			apu->square1WaveformSequencer++;
-		}
+		apu->square1WaveformSequencer++;
 	}
 	uint16_t square2Period = SQUARE2PERIOD(apu);
-	bool square2Muted = (square2Period < 8) || (targetSweepPeriod(apu->registers[APU_SQUARE2_SWEEP], square2Period, true) > 0x7FF);
+	bool square2Muted = (square2Period < 8) || (targetSweepPeriod(apu->registers[APU_SQUARE2_SWEEP], square2Period, true) > 0x7FF) || (apu->square2LengthCounter == 0);
 	if (apu->square2PeriodTimer == 0) {
 		apu->square2PeriodTimer = SQUARE2PERIOD(apu) + 1;
-		if (apu->square2LengthCounter > 0) {
-			apu->square2WaveformSequencer++;
-		}
+		apu->square2WaveformSequencer++;
 	}
 	// Every second CPU cycle
 	if (apu->frameCounterDivider & 0b1) {
@@ -284,6 +285,21 @@ void tickAPU(APU *apu) {
 	// Every CPU cycle
 	apu->trianglePeriodTimer--;
 
+	// Noise channel
+	if (apu->noisePeriodTimer == 0) {
+		apu->noisePeriodTimer = noisePeriodLookup[apu->registers[APU_NOISE_PERIOD] & 0b1111] + 1;
+		bool feedback = apu->noiseShiftRegister & 1;
+		if (apu->registers[APU_NOISE_PERIOD] & 0b10000000) {
+			feedback ^= (apu->noiseShiftRegister >> 6) & 1;
+		} else {
+			feedback ^= (apu->noiseShiftRegister >> 1) & 1;
+		}
+		apu->noiseShiftRegister >>= 1;
+		apu->noiseShiftRegister |= (feedback << 13);
+	}
+	// Every CPU cycle
+	apu->noisePeriodTimer--;
+
 	// Outputs sound level
 	square1Output = squareWaveform[apu->registers[APU_SQUARE1_ENVELOPE_MISC] >> 6][apu->square1WaveformSequencer & 0x07];
 	square1Output *= envelopeVolume(apu->registers[APU_SQUARE1_ENVELOPE_MISC], apu->square1EnvelopeVolumeCounter);
@@ -292,6 +308,8 @@ void tickAPU(APU *apu) {
 	square2Output *= envelopeVolume(apu->registers[APU_SQUARE2_ENVELOPE_MISC], apu->square2EnvelopeVolumeCounter);
 	square2Output *= !square2Muted;
 	triangleOutput = triangleWaveform[apu->triangleWaveformSequencer & 0x1F];
+	noiseOutput = ((apu->noiseShiftRegister & 1) == 0) && (apu->noiseLengthCounter != 0);
+	noiseOutput *= envelopeVolume(apu->registers[APU_NOISE_ENVELOPE], apu->noiseEnvelopeVolumeCounter);
 
 	float output = mixChannels(apu, square1Output, square2Output, triangleOutput, noiseOutput, DMCOutput);
 	apu->currentSample = output;

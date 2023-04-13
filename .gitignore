@@ -12,6 +12,7 @@ bin
 
 **/log.txt
 **/*.nes
+out.wav
 
 # Platform-specific files
 Thumbs.db
