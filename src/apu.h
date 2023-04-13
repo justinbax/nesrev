@@ -45,6 +45,16 @@ typedef struct APU {
 	bool reloadSquare1Sweep;
 	bool reloadSquare2Sweep;
 
+	uint8_t square1EnvelopeVolumeCounter;
+	uint8_t square2EnvelopeVolumeCounter;
+	uint8_t noiseEnvelopeVolumeCounter;
+	uint8_t square1EnvelopeDivider;
+	uint8_t square2EnvelopeDivider;
+	uint8_t noiseEnvelopeDivider;
+	bool square1RestartEnvelope;
+	bool square2RestartEnvelope;
+	bool noiseRestartEnvelope;
+
 	uint16_t square1PeriodTimer;
 	uint16_t square2PeriodTimer;
 	uint16_t trianglePeriodTimer;
@@ -74,6 +84,8 @@ void clockLengthCounters(APU *apu);
 void clockSweepUnits(APU *apu);
 void clockLinearCounter(APU *apu);
 void clockEnvelopes(APU *apu);
+void clockEnvelope(uint8_t envelopeRegister, bool *restartEnvelope, uint8_t *volumeCounter, uint8_t *envelopeDivider);
 uint16_t targetSweepPeriod(uint8_t sweepRegister, uint16_t currentPeriod, bool isSquare2);
+uint8_t envelopeVolume(uint8_t envelopeRegister, uint8_t envelopeCounter);
 
 #endif // ifndef APU_H
