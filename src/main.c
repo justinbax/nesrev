@@ -129,6 +129,7 @@ int main(int argc, char *argv[]) {
 	if (loadROMFromFile(&cart, argv[1]) != 0) {
 		printf("Fatal error : couldn't load ROM.\n");
 		terminateContext(context);
+		terminateAudioEngine(&engine);
 		glfwTerminate();
 		return -0x09;
 	}
@@ -170,6 +171,8 @@ int main(int argc, char *argv[]) {
 	timeBeginPeriod(WIN32_TIMERESOLUTION);
 #endif
 
+	startStream(&engine);
+
 	while (!glfwWindowShouldClose(window)) {
 
 		if (glfwGetTime() - frameStart >= frameDuration) {
@@ -207,6 +210,8 @@ int main(int argc, char *argv[]) {
 #endif
 		}
 	}
+
+	stopStream(&engine);
 
 #ifdef _WIN32
 	timeEndPeriod(WIN32_TIMERESOLUTION);

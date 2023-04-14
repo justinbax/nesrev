@@ -14,12 +14,12 @@ OBJFILES = $(SRCFILES:$(SRCDIR)/%.c=$(BINDIR)/%.o)
 EXECUTABLE = $(BINDIR)/nesrev
 HEADFILES = $(wildcard $(SRCDIR)/*.h)
 
-LIBRARIES = glfw3 glew32 opengl32
+LIBRARIES = portaudio glfw3 glew32 opengl32
 
 ifeq ($(OS),Windows_NT)
 	CCFLAGS += -D_WIN32 -DGLEW_STATIC
 	LIBDIR += $(BASELIBDIR)/win32
-	LIBRARIES += gdi32 winmm
+	LIBRARIES += gdi32 winmm ole32 setupapi
 else
 	@echo Compiling for platforms other than Windows is not yet supported.
 endif
