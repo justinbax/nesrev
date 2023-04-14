@@ -4,11 +4,11 @@
 
 // Undefined later
 #define FRAMECOUNTER_5STEP(apu) ((apu)->registers[APU_FRAMECOUNTER] & 0b10000000)
-#define SQUARE1ENABLED(apu) ((apu)->registers[APU_CTRL] & 0b00000001)
-#define SQUARE2ENABLED(apu) ((apu)->registers[APU_CTRL] & 0b00000010)
-#define TRIANGLEENABLED(apu) ((apu)->registers[APU_CTRL] & 0b00000100)
-#define NOISEENABLED(apu) ((apu)->registers[APU_CTRL] & 0b00001000)
-#define DMCENABLED(apu) ((apu)->registers[APU_CTRL] & 0b00010000)
+#define SQUARE1ENABLED(apu) (((apu)->registers[APU_CTRL] & 0b00000001) > 0)
+#define SQUARE2ENABLED(apu) (((apu)->registers[APU_CTRL] & 0b00000010) > 0)
+#define TRIANGLEENABLED(apu) (((apu)->registers[APU_CTRL] & 0b00000100) > 0)
+#define NOISEENABLED(apu) (((apu)->registers[APU_CTRL] & 0b00001000) > 0)
+#define DMCENABLED(apu) (((apu)->registers[APU_CTRL] & 0b00010000) > 0)
 #define SQUARE1PERIOD(apu) (((uint16_t)(apu)->registers[APU_SQUARE1_COUNTER_TIMERHIGH] & 0b00000111) << 8 | (apu)->registers[APU_SQUARE1_TIMERLOW])
 #define SQUARE2PERIOD(apu) (((uint16_t)(apu)->registers[APU_SQUARE2_COUNTER_TIMERHIGH] & 0b00000111) << 8 | (apu)->registers[APU_SQUARE2_TIMERLOW])
 #define TRIANGLEPERIOD(apu) (((uint16_t)(apu)->registers[APU_TRIANGLE_TIMERHIGH] & 0b00000111) << 8 | (apu)->registers[APU_TRIANGLE_TIMERLOW])
@@ -81,7 +81,7 @@ void clockSweepUnits(APU *apu) {
 		apu->registers[APU_SQUARE2_COUNTER_TIMERHIGH] &= 0b00000111;
 		apu->registers[APU_SQUARE2_COUNTER_TIMERHIGH] |= newPeriod >> 8;
 	}
-	if (apu->square1SweepDivider == 0 || apu->reloadSquare1Sweep) {
+	if (apu->square2SweepDivider == 0 || apu->reloadSquare2Sweep) {
 		// Reload divider
 		apu->square2SweepDivider = ((apu->registers[APU_SQUARE2_SWEEP] & 0b01110000) >> 4) + 1;
 	}
@@ -128,7 +128,7 @@ uint16_t targetSweepPeriod(uint8_t sweepRegister, uint16_t currentPeriod, bool i
 	bool negate = (sweepRegister & 0b00001000);
 	toAdd *= 2 * negate - 1;
 	toAdd -= negate && !isSquare2;
-	return currentPeriod + isSquare2;
+	return currentPeriod + toAdd;
 }
 
 uint8_t envelopeVolume(uint8_t envelopeRegister, uint8_t envelopeCounter) {
@@ -222,6 +222,21 @@ void writeRegisterAPU(APU *apu, uint16_t address, uint8_t data) {
 			}
 			break;
 		case 0x15:
+			if ((data & 0b00000001) == 0) {
+				apu->square1LengthCounter = 0;
+			}
+			if ((data & 0b00000010) == 0) {
+				apu->square2LengthCounter = 0;
+			}
+			if ((data & 0b00000100) == 0) {
+				apu->triangleLengthCounter = 0;
+			}
+			if ((data & 0b00001000) == 0) {
+				apu->noiseLengthCounter = 0;
+			}
+			if ((data & 0b00010000) == 0) {
+				// TODO dmc
+			}
 			apu->irqOutDMC = false;
 			break;
 	}
@@ -266,7 +281,7 @@ void tickAPU(APU *apu) {
 	uint16_t square2Period = SQUARE2PERIOD(apu);
 	bool square2Muted = (square2Period < 8) || (targetSweepPeriod(apu->registers[APU_SQUARE2_SWEEP], square2Period, true) > 0x7FF) || (apu->square2LengthCounter == 0);
 	if (apu->square2PeriodTimer == 0) {
-		apu->square2PeriodTimer = SQUARE2PERIOD(apu) + 1;
+		apu->square2PeriodTimer = square2Period + 1;
 		apu->square2WaveformSequencer++;
 	}
 	// Every second CPU cycle
