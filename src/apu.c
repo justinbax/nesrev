@@ -1,5 +1,6 @@
 #include "apu.h"
 
+#include <stdio.h>
 #include <stdbool.h>
 
 // Undefined later
@@ -61,31 +62,33 @@ void clockSweepUnits(APU *apu) {
 	// Square 1
 	uint16_t currentPeriod = SQUARE1PERIOD(apu);
 	uint16_t newPeriod = targetSweepPeriod(apu->registers[APU_SQUARE1_SWEEP], currentPeriod, false);
-	if (apu->square1SweepDivider == 0 && apu->registers[APU_SQUARE1_SWEEP] & 0b10000000 && !(currentPeriod < 8 || newPeriod > 0x7FF)) {
+	if (apu->square1SweepDivider == 0 && (apu->registers[APU_SQUARE1_SWEEP] & 0b10000000) > 0 && !(currentPeriod < 8 || newPeriod > 0x7FF)) {
 		// Set new period
 		apu->registers[APU_SQUARE1_TIMERLOW] = newPeriod & 0xFF;
-		apu->registers[APU_SQUARE1_COUNTER_TIMERHIGH] &= 0b00000111;
+		apu->registers[APU_SQUARE1_COUNTER_TIMERHIGH] &= 0b11111000;
 		apu->registers[APU_SQUARE1_COUNTER_TIMERHIGH] |= newPeriod >> 8;
 	}
 	if (apu->square1SweepDivider == 0 || apu->reloadSquare1Sweep) {
 		// Reload divider
 		apu->square1SweepDivider = ((apu->registers[APU_SQUARE1_SWEEP] & 0b01110000) >> 4) + 1;
+		apu->reloadSquare1Sweep = false;
 	}
 
 	// Square 2
 	currentPeriod = SQUARE2PERIOD(apu);
 	newPeriod = targetSweepPeriod(apu->registers[APU_SQUARE2_SWEEP], currentPeriod, true);
-	if (apu->square2SweepDivider == 0 && apu->registers[APU_SQUARE2_SWEEP] & 0b10000000 && !(currentPeriod < 8 || newPeriod > 0x7FF)) {
+	if (newPeriod > 0x7FF) printf("A");
+	if (apu->square2SweepDivider == 0 && (apu->registers[APU_SQUARE2_SWEEP] & 0b10000000) > 0 && !(currentPeriod < 8 || newPeriod > 0x7FF)) {
 		// Set new period
-		apu->registers[APU_SQUARE2_TIMERLOW] = newPeriod & 0xFF;
-		apu->registers[APU_SQUARE2_COUNTER_TIMERHIGH] &= 0b00000111;
+		apu->registers[APU_SQUARE2_TIMERLOW] = newPeriod & 0x7FF;
+		apu->registers[APU_SQUARE2_COUNTER_TIMERHIGH] &= 0b11111000;
 		apu->registers[APU_SQUARE2_COUNTER_TIMERHIGH] |= newPeriod >> 8;
 	}
 	if (apu->square2SweepDivider == 0 || apu->reloadSquare2Sweep) {
 		// Reload divider
 		apu->square2SweepDivider = ((apu->registers[APU_SQUARE2_SWEEP] & 0b01110000) >> 4) + 1;
+		apu->reloadSquare2Sweep = false;
 	}
-
 	apu->square1SweepDivider--;
 	apu->square2SweepDivider--;
 }
@@ -126,7 +129,7 @@ void clockEnvelope(uint8_t envelopeRegister, bool *restartEnvelope, uint8_t *vol
 uint16_t targetSweepPeriod(uint8_t sweepRegister, uint16_t currentPeriod, bool isSquare2) {
 	uint16_t toAdd = currentPeriod >> (sweepRegister & 0b00000111);
 	bool negate = (sweepRegister & 0b00001000);
-	toAdd *= 2 * negate - 1;
+	toAdd *= 2 * !negate - 1;
 	toAdd -= negate && !isSquare2;
 	return currentPeriod + toAdd;
 }
