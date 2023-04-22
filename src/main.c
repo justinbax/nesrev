@@ -184,6 +184,7 @@ int main(int argc, char *argv[]) {
 				// PHI2
 				cpu.NMIPin = ppu.outInterrupt;
 				cpu.IRQPin = !(apu.irqOutDMC || apu.irqOutFrame);
+				// TODO IRQ is broken
 				pollInterrupts(&cpu);
 				tickPPU(&ppu);
 				// PHI1

@@ -187,7 +187,6 @@ void tickCPU(CPU *cpu) {
 		cpu->IR = 0x00;
 		cpu->step = IRQ_STEP;
 		cpu->nextIsIRQ = false;
-		printf("IRQ\n");
 	}
 	
 	if (cpu->OAMDMAstatus > DMA_WAIT) {
@@ -281,7 +280,7 @@ void tickCPU(CPU *cpu) {
 			case 0x06 | (0b011 << 8): cpuWrite(cpu->bus, 0x0000 | cpu->DPL, cpu->B); cpu->carryFlag = cpu->B & 0b10000000; cpu->B <<= 1; nzFlags(cpu, cpu->B); break;
 			case 0x06 | (0b100 << 8): cpuWrite(cpu->bus, 0x0000 | cpu->DPL, cpu->B); checkInterrupts(cpu); END(cpu); break;
 
-			// SLO_ZP
+			// SLO_ZP TODO blargg's test doesn't pass
 			case 0x07 | (0b001 << 8): cpu->DPL = fetch(cpu); break;
 			case 0x07 | (0b010 << 8): cpu->B = cpuRead(cpu->bus, 0x0000 | cpu->DPL); break;
 			case 0x07 | (0b011 << 8): cpuWrite(cpu->bus, 0x0000 | cpu->DPL, cpu->B); cpu->carryFlag = cpu->B & 0b10000000; cpu->B <<= 1; cpu->A |= cpu->B; break;
@@ -692,7 +691,7 @@ void tickCPU(CPU *cpu) {
 			case 0x5D | (0b001 << 8):
 			case 0x5D | (0b010 << 8): absAddressing(cpu, cpu->X); break;
 			case 0x5D | (0b011 << 8): cpu->B = cpuRead(cpu->bus, DATAPTR(cpu)); if (cpu->DPL < cpu->X) cpu->DPH++; else {cpu->A ^= cpu->B; nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu);} break;
-			case 0x5D | (0b100 << 8): cpu->A ^= cpuRead(cpu->bus, DATAPTR(cpu)); nzFlags(cpu, cpu->B); checkInterrupts(cpu); END(cpu); break;
+			case 0x5D | (0b100 << 8): cpu->A ^= cpuRead(cpu->bus, DATAPTR(cpu)); nzFlags(cpu, cpu->A); checkInterrupts(cpu); END(cpu); break;
 
 			// LSR_ABX
 			case 0x5E | (0b001 << 8):
@@ -985,7 +984,7 @@ void tickCPU(CPU *cpu) {
 			case 0x9B | (0b011 << 8): cpuRead(cpu->bus, DATAPTR(cpu)); cpu->SP = cpu->A & cpu->X; cpu->temp = cpu->DPH + 1; if (cpu->DPL < cpu->Y) cpu->DPH++; break;
 			case 0x9B | (0b100 << 8): cpuWrite(cpu->bus, DATAPTR(cpu), cpu->A & cpu->X & cpu->temp); checkInterrupts(cpu); END(cpu); break;
 
-			// SHY_ABX
+			// SHY_ABX // TODO blargg's test doesn't pass
 			case 0x9C | (0b001 << 8):
 			case 0x9C | (0b010 << 8): absAddressing(cpu, cpu->X); break;
 			case 0x9C | (0b011 << 8): cpuRead(cpu->bus, DATAPTR(cpu)); cpu->temp = cpu->DPH + 1; if (cpu->DPL < cpu->X) cpu->DPH++; break;
@@ -997,7 +996,7 @@ void tickCPU(CPU *cpu) {
 			case 0x9D | (0b011 << 8): cpuRead(cpu->bus, DATAPTR(cpu)); if (cpu->DPL < cpu->X) cpu->DPH++; break;
 			case 0x9D | (0b100 << 8): cpuWrite(cpu->bus, DATAPTR(cpu), cpu->A); checkInterrupts(cpu); END(cpu); break;
 
-			// SHX_ABY
+			// SHX_ABY // TODO blargg's test doesn't pass
 			case 0x9E | (0b001 << 8):
 			case 0x9E | (0b010 << 8): absAddressing(cpu, cpu->Y); break;
 			case 0x9E | (0b011 << 8): cpuRead(cpu->bus, DATAPTR(cpu)); cpu->temp = cpu->DPH + 1; if (cpu->DPL < cpu->Y) cpu->DPH++; break;
@@ -1482,7 +1481,10 @@ void tickCPU(CPU *cpu) {
 
 			// NOP_IMM
 			case 0x80 | (0b001 << 8):
-			case 0x89 | (0b001 << 8): fetch(cpu); checkInterrupts(cpu); END(cpu); break;
+			case 0x82 | (0b001 << 8):
+			case 0x89 | (0b001 << 8):
+			case 0xC2 | (0b001 << 8):
+			case 0xE2 | (0b001 << 8): fetch(cpu); checkInterrupts(cpu); END(cpu); break;
 
 			// NOP_ZP
 			case 0x04 | (0b001 << 8):

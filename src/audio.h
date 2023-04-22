@@ -6,7 +6,7 @@
 
 #include "Portaudio/portaudio.h"
 
-#define SAMPLE_RATE 44100
+#define TARGET_SAMPLE_RATE 44100
 
 typedef struct AudioData {
 	uint16_t nextInBuffer;
@@ -19,7 +19,10 @@ typedef struct AudioEngine {
 	AudioData data;
 	bool portaudioIsUp;
 	float sampleSum;
-	int sampleCount;
+	int currentSampleCount;
+	uint64_t samplesDownsampled;
+	uint64_t totalSourceSamples;
+	int nextResampling;
 } AudioEngine;
 
 // Interface functions

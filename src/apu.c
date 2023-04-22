@@ -1,6 +1,5 @@
 #include "apu.h"
 
-#include <stdio.h>
 #include <stdbool.h>
 
 // Undefined later
@@ -77,7 +76,6 @@ void clockSweepUnits(APU *apu) {
 	// Square 2
 	currentPeriod = SQUARE2PERIOD(apu);
 	newPeriod = targetSweepPeriod(apu->registers[APU_SQUARE2_SWEEP], currentPeriod, true);
-	if (newPeriod > 0x7FF) printf("A");
 	if (apu->square2SweepDivider == 0 && (apu->registers[APU_SQUARE2_SWEEP] & 0b10000000) > 0 && !(currentPeriod < 8 || newPeriod > 0x7FF)) {
 		// Set new period
 		apu->registers[APU_SQUARE2_TIMERLOW] = newPeriod & 0x7FF;
