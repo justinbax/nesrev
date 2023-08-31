@@ -205,8 +205,11 @@ int main(int argc, char *argv[]) {
 			}
 #else
 			while (frameDuration - (glfwGetTime() - frameStart) > 4.0f / 1000) {
+				struct timespec sleepTime;
+				sleepTime.tv_sec = 0;
+				sleepTime.tv_nsec = UNIX_TIMERESOLUTION;
 				// For now, same as Windows
-				nanosleep(UNIX_TIMERESOLUTION);
+				nanosleep(&sleepTime, NULL);
 			}
 #endif
 		}

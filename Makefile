@@ -21,7 +21,12 @@ ifeq ($(OS),Windows_NT)
 	LIBDIR += $(BASELIBDIR)/win32
 	LIBRARIES += gdi32 winmm ole32 setupapi
 else
-	@echo Compiling for platforms other than Windows is not yet supported.
+	UNAME = $(shell uname -s)
+	ifeq ($(UNAME),Linux)
+		CCFLAGS += -D_LINUX
+		LIBDIR += $(BASELIBDIR)/linux
+		LIBRARIES = portaudio glfw GLEW GL
+	endif
 endif
 
 all: $(EXECUTABLE)
