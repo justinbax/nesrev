@@ -16,7 +16,7 @@ The provided Makefile has two options:
 
 `make release`: disables debug information, enables medium-high optimizations
 
-**Currently, compilation is only supported on Windows!** Porting it to MacOS or Linux shouldn't be hard: the libraries used alongside OpenGL are cross-platform. You can head up to the [GLFW](https://www.glfw.org/) and [GLEW](http://glew.sourceforge.net/) sites to download the latest binaries and put them in `lib/`. You can either modify the Makefile to remove the warning about non-Windows compilation not being supported and link to the correct system libraries or compile NESRev manually.
+Currently, compilation is supported for Windows and Linux. Windows libraries are already packaged in the `lib/win32` directory, but Linux users should install the [GLFW](https://glfw.org/) and [GLEW](http://glew.sourceforge.net/) libraries beforehand. Porting the project to MacOS should not be difficult, as those libraries are cross-platform; only the Makefile would need to be modified.
 
 ## Emulation
 
@@ -49,7 +49,7 @@ The basic cartridge structure is defined in `src/cartridge.h`. All the logic of 
 | Name | Mapper Number | Approx. % of games | Notes |
 | --- | --- | --- | --- |
 | NROM | 000 | 10.0% |  |
-| MMC1 | 001 | 27.8% |  |
+| MMC1 | 001 | 27.8% | Some edge cases unhandled |
 
 Currently, RAM and saved (persistent) memory are not supported. This applies to all mappers.
 
