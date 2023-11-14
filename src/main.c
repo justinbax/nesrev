@@ -152,8 +152,13 @@ int main(int argc, char *argv[]) {
 	uint8_t palette[0x40 * 3];
 	if (fread(palette, sizeof(uint8_t), 0x40 * 3, paletteFile) != 0x40 * 3) {
 		printf("Fatal error : corrupted default palette file (default.pal).\n");
-		fclose(paletteFile);
-		fclose(logFile);
+		if (paletteFile != NULL) {
+			fclose(paletteFile);
+		}
+
+		if (logFile != NULL) {
+			fclose(logFile);
+		}
 		free(colors);
 		freeCartridge(&cart);
 		terminateContext(context);
@@ -161,7 +166,10 @@ int main(int argc, char *argv[]) {
 		return -0x04;
 	}
 	
-	fclose(paletteFile);
+	if (paletteFile != NULL) {
+		fclose(paletteFile);
+	}
+
 	loadPalette(&ppu, palette);
 
 	double frameDuration = 1.0f / 60;
@@ -221,7 +229,10 @@ int main(int argc, char *argv[]) {
 	timeEndPeriod(WIN32_TIMERESOLUTION);
 #endif
 
-	fclose(logFile);
+	if (logFile != NULL) {
+		fclose(logFile);
+	}
+
 	free(colors);
 	freeCartridge(&cart);
 

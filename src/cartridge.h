@@ -9,8 +9,8 @@
 #define MIRROR_UNKNOWN 0
 #define MIRROR_1SCREENA 1
 #define MIRROR_1SCREENB 2
-#define MIRROR_VERTICAL 3
-#define MIRROR_HORIZONTAL 4
+#define MIRROR_VERTICAL 3 // Horizontal arrangement, so vertical mirroring
+#define MIRROR_HORIZONTAL 4 // Vertical arrangement, so horizontal mirroring
 #define MIRROR_4SCREEN 5
 
 #define MAPPER_NROM 0

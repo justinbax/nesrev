@@ -9,10 +9,13 @@
 **/*.app
 main
 bin
+roms
 
 **/log.txt
 **/*.nes
 out.wav
+**/*cachegrind*
+**/*annotate*
 
 # Platform-specific files
 Thumbs.db
