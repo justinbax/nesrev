@@ -471,7 +471,12 @@ void tickPPU(PPU *ppu) {
 						ppu->sprAttributes[currentSprite] = ppu->registers[OAMDATA];
 						if (ppu->registers[OAMDATA] & SPR_VERTSYMMETRY) {
 							// TODO maybe add macros for those pattern bitmaps ?
+							// Individual tile is flipped, whether in 8x8 or 8x16 mode
 							ppu->sprPatternIndex = (ppu->sprPatternIndex & 0b111111111000) | (7 - (ppu->sprPatternIndex & 0b111)); // Vertical symmetry, if applicable
+							if (ppu->registers[PPUCTRL] & CTRL_SPRSIZE) {
+								// In 8x16 mode, the top and bottom halves are switched in addition to each being flipped individually
+								ppu->sprPatternIndex ^= 0b1000; // Switch the bit selecting top or bottom half of 8x16 sprite
+							}
 						}
 
 						// Garbage attribute table

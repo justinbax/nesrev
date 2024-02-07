@@ -1,6 +1,9 @@
 CC = gcc
 CCFLAGS = -Wall
 
+RM = rm
+RMFLAGS = 
+
 SRCDIR = src
 BINDIR = bin
 INCLUDEDIR = include
@@ -20,8 +23,10 @@ ifeq ($(OS),Windows_NT)
 	CCFLAGS += -D_WIN32 -DGLEW_STATIC
 	LIBDIR += $(BASELIBDIR)/win32
 	LIBRARIES += gdi32 winmm ole32 setupapi
+	RM = del
 else
 	UNAME = $(shell uname -s)
+	RMFLAGS = -f
 	ifeq ($(UNAME),Linux)
 		CCFLAGS += -D_LINUX
 		LIBDIR += $(BASELIBDIR)/linux
@@ -38,10 +43,15 @@ debug: $(EXECUTABLE)
 release: CCFLAGS += -O2
 release: $(EXECUTABLE)
 
+clean:
+	$(RM) $(RMFLAGS) $(OBJFILES)
+	$(RM) $(RMFLAGS) $(EXECUTABLE)
+
 $(EXECUTABLE): $(OBJFILES)
 	$(CC) $(CCFLAGS) -o $(EXECUTABLE) $(OBJFILES) $(addprefix -L,$(LIBDIR)) $(addprefix -l,$(LIBRARIES))
 
+# Absolute magic
 $(BINDIR)/%.o: $(SRCDIR)/%.c $(HEADFILES)
 	$(CC) $(CCFLAGS) -I$(INCLUDEDIR) -c -o $@ $<
 
-.phony: all debug release
+.phony: all debug release clean

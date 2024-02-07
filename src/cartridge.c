@@ -125,7 +125,7 @@ uint8_t cartridgeReadCHR(Bus *bus, uint16_t address) {
 		case MAPPER_MMC1:
 			if (address >= 0x2000) {
 				// Nametable
-				// We rely on the register and not on bus->cartridge->mirroringType because I'm the developper and I get to make the rules
+				// We rely on the register and not on bus->cartridge->mirroringType because I'm the developer and I get to make the rules
 				switch (bus->cartridge->registers[MMC1_REG_CTRL] & 0b00011) {
 					case 0b00:
 						return bus->cartridge->internalVRAM[MIRROR_1SCA_ADDR(address)];

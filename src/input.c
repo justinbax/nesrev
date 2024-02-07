@@ -36,6 +36,10 @@ uint8_t readController(Port *port) {
 			}
 		}
 	}
+	if (glfwGetKey(port->window, GLFW_KEY_P)) {
+		// TODO remove this
+		data = 0xFF;
+	}
 	return data;
 }
 

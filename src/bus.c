@@ -25,7 +25,15 @@ uint8_t cpuRead(Bus *bus, uint16_t address) {
 			case OAMDMA: result = 0x00; break;
 			case APU_CTRL: result = readRegisterAPU(bus->apu, address); break;
 			case JOY1:
-			case JOY2: result = readController(&bus->ports[address - JOY1]); break;
+			case JOY2:
+				result = readController(&bus->ports[address - JOY1]);
+				// TODO remove this
+				// Currently, this is triggered when pressing P (PAUSE). It is useful in debugging to have a breakpoint trigger whenever this key is pressed
+				if (result == 0xFF) {
+					printf("interrupted\n");
+					result = 0;
+				}
+				break;
 			default: result = 0x00; break;
 		}
 	} else {
