@@ -18,18 +18,24 @@ void freeCartridge(Cartridge *cart) {
 	free(cart->persistentRAM);
 }
 
-int loadROMFromFile(Cartridge *cart, const char *path) {
+int loadROMFromFile(Cartridge *cart, const char *path, bool printDetails) {
+	if (printDetails) printf("Cartridge details:\n");
+
 	FILE *input = fopen(path, "rb");
-	if (input == NULL)
+	if (input == NULL) {
+		if (printDetails) printf("\tError: couldn't open file.\n");
 		return -0x01;
+	}
 
 	uint8_t flags[16];
 	if (fread(flags, sizeof(uint8_t), 16, input) != 16) {
+		if (printDetails) printf("\tError: corrupted file does not contain flags.\n");
 		fclose(input);
 		return -0x02;
 	}
 
 	if (flags[0] != 'N' || flags[1] != 'E' || flags[2] != 'S' || flags[3] != 0x1A) {
+		if (printDetails) printf("\tError: corrupted file does not contain NES header.\n");
 		fclose(input);
 		return -0x03;
 	}
@@ -41,13 +47,22 @@ int loadROMFromFile(Cartridge *cart, const char *path) {
 	cart->persistentRAM = NULL;
 	cart->CHRisRAM = false;
 
+	if (printDetails) {
+		printf("\tPRG size: 0x%X\n", cart->PRGsize);
+		printf("\tCHR size: 0x%X\n", cart->CHRsize);
+		printf("\tMapper ID: %i\n", cart->mapperID);
+	}
+
 	// TODO select option for random- / 0- / 1- filled RAM (both PRG and CHR (below))
 	if (flags[6] & HEADER6_NONVOLATILE) {
 		cart->persistentRAM = malloc(0x2000 * sizeof(uint8_t));
 		if (!cart->persistentRAM) {
+			if (printDetails) printf("\tError: couldn't allocate memory for persistent RAM.\n");
 			fclose(input);
 			return -0x06;
 		}
+
+		printf("\tNOTE: Presence of non-volatile memory (defaults to 2KiB battery-backed PRG RAM)\n");
 	}
 
 	switch (cart->mapperID) {
@@ -62,6 +77,7 @@ int loadROMFromFile(Cartridge *cart, const char *path) {
 			cart->registers[MMC1_REG_CTRL] = MMC1_REG_CTRL_DEFAULTVALUE;
 			break;
 		default:
+			if (printDetails) printf("\tError: Mapper not supported.\n");
 			fclose(input);
 			return -0x05;
 	}
@@ -70,15 +86,26 @@ int loadROMFromFile(Cartridge *cart, const char *path) {
 	if (flags[6] & HEADER6_4SCREEN)
 		cart->mirroringType = MIRROR_4SCREEN;
 
+	if (printDetails) {
+		printf("\tMirroring type: ");
+		switch (cart->mirroringType) {
+			case MIRROR_VERTICAL: printf("vertical.\n"); break;
+			case MIRROR_HORIZONTAL: printf("horizontal.\n"); break;
+			case MIRROR_4SCREEN: printf("4 screen.\n"); break;
+		}
+	}
+
 	// TODO nametable mirroring
 
 	if (flags[6] & HEADER6_TRAINER) {
 		uint8_t trainer[512];
 		if (fread(flags, sizeof(uint8_t), 512, input) != 512) {
+			if (printDetails) printf("\tError: Corrupted file does not contain 512B trainer when indicated in header.\n");
 			freeCartridge(cart);
 			fclose(input);
 			return -0x02;
 		}
+		if (printDetails) printf("\tNOTE: Presence of 512B trainer (currently unsupported).\n");
 	}
 
 	// TODO error handling is the absolute worst
@@ -86,10 +113,12 @@ int loadROMFromFile(Cartridge *cart, const char *path) {
 	if (cart->CHRsize == 0) {
 		cart->CHRisRAM = true;
 		cart->CHRsize = 0x2000;
+		printf("\tNOTE: CHR (of size 0B) replaced with writeable CHR RAM of size 2KiB.\n");
 	}
 
 	cart->CHR = malloc(cart->CHRsize);
 	if (!cart->PRG || !cart->CHR) {
+		if (printDetails) printf("\tError: couldn't allocate memory for PRG or CHR.\n");
 		freeCartridge(cart);
 		fclose(input);
 		return -0x04;
@@ -103,6 +132,7 @@ int loadROMFromFile(Cartridge *cart, const char *path) {
 	fclose(input);
 
 	if (status) {
+		if (printDetails) printf("\tError: corrupted file does not contain the valid amount of PRG or CHR.\n");
 		freeCartridge(cart);
 		return -0x02;
 	}

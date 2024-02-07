@@ -65,6 +65,8 @@ typedef struct PPU {
 	bool spriteInRange; // The sprite being evaluated is on next scanline (copy it to second OAM)
 	uint8_t sprCount; // Number of sprites on next scanline
 	uint16_t sprPatternIndex; // Location of the pattern of next sprite, given by second OAM bytes 0 and 1 (final location given by SPRPATTERNADDR)
+	// Note on sprPatternIndex: this is by no means the final PPU address to the sprite's pattern, even though it's 16 bits. The macro SPRPATTERNADDR is responsible for translating sprPatternIndex into the final PPU address.
+	// sprPatternIndex is constructed as such: (y line of sprite selected between 0-8 or 0-16 in 8x16 mode) for the bottom 4 bits, and (OAM byte 1: tile index number) for bits 5-12, and is modified for vertical flipping if needed
 	bool sprZeroOnNext; // Sprite zero detected to be in next scanline
 	bool sprZeroOnCurrent; // Initialized from sprZeroOnNext for current scanline
 
