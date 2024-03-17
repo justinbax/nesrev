@@ -33,6 +33,18 @@ else
 		LIBRARIES = portaudio glfw GLEW GL
 	endif
 endif
+ifeq ($(NESREV_NOAUDIO),1)
+	LIBRARIES := $(filter-out portaudio,$(LIBRARIES))
+	SRCFILES := $(filter-out $(wildcard $(SRCDIR)/audio*),$(SRCFILES))
+	OBJFILES := $(SRCFILES:$(SRCDIR)/%.c=$(BINDIR)/%.o)
+	HEADFILES := $(filter-out $(wildcard $(SRCDIR)/audio*),$(HEADFILES))
+	CCFLAGS += -DNESREV_NOAUDIO
+endif
+ifeq ($(NESREV_DEBUG),full)
+	CCFLAGS += -DNESREV_DEBUG=DBG_FULL
+else ifeq ($(NESREV_DEBUG),reduced)
+	CCFLAGS += -DNESREV_DEBUG=DBG_REDUCED
+endif
 
 all: $(EXECUTABLE)
 

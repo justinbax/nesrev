@@ -30,6 +30,10 @@
 #define WINDOW_HEIGHT HEIGHT_PIXELS * 4
 #define WINDOW_WIDTH WIDTH_PIXELS * 4
 
+#ifndef NESREV_DEBUG
+#define NESREV_DEBUG DBG_NONE
+#endif // ifndef NESREV_DEBUG
+
 void callbackErrorGL(GLenum source, GLenum type, GLenum id, GLenum severity, GLsizei length, const GLchar *message, const void *userParam) {
 	if (type == GL_DEBUG_TYPE_ERROR) {
 		printf("OpenGL Error 0x%X from 0x%X : %s (severity : 0x%X)\n", type, id, message, severity);
@@ -135,17 +139,17 @@ int main(int argc, char *argv[]) {
 	}
 
 	// Debug logging
-	// TODO remove this
-	int debugging = DBG_NONE;
+	// With the provided Makefile, NESREV_DEBUG is always defined according to an environment variable
+	// However, even by default, NESREV_DEBUG will be set to DBG_NONE
 	FILE *logFile = NULL;
-	if (debugging) {
+	if (NESREV_DEBUG != DBG_NONE) {
 		logFile = fopen("log.txt", "w+");
 		if (logFile == NULL) {
 			printf("Error : can't open / create log file.\n");
-			debugging = DBG_NONE;
+			#define NESREV_DEBUG DBG_NONE
 		}
 	}
-	setLogCPU(&cpu, debugging, logFile);
+	setLogCPU(&cpu, NESREV_DEBUG, logFile);
 
 	// Palette information is stored in .pal files (no header, 3-byte RGB for each of 64 palette colors)
 	FILE *paletteFile = fopen("default.pal", "r");

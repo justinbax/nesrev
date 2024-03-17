@@ -36,4 +36,13 @@ void newSamplef(AudioEngine *engine, float sample);
 void terminatePortaudio(AudioEngine *engine, const char *file, int line);
 int portaudioCallback(const void *input, void *output, unsigned long framesPerBuffer, const PaStreamCallbackTimeInfo *timeInfo, PaStreamCallbackFlags status, void *userData);
 
+#ifdef NESREV_NOAUDIO
+// If compiling without audio engine, define methods as empty
+void initAudioEngine(AudioEngine *engine) {}
+void terminateAudioEngine(AudioEngine *engine) {}
+void startStream(AudioEngine *engine) {}
+void stopStream(AudioEngine *engine) {}
+void newSamplef(AudioEngine *engine, float sample) {}
+#endif //ifndef NESREV_NOAUDIO
+
 #endif // ifndef AUDIO_H

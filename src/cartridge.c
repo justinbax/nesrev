@@ -91,7 +91,7 @@ void cartridgeWritePRG(Bus *bus, uint16_t address, uint8_t data) {
 						bus->cartridge->registers[MMC1_REG_SHIFT] = MMC1_REG_SHIFT_DEFAULTVALUE;
 
 						if (((address >> 13) & 0b11) == MMC1_REG_CTRL) {
-							switch (bus->cartridge->registers[MMC1_REG_CTRL] & 0b11) {
+							switch (bus->cartridge->registers[MMC1_REG_CTRL] & MMC1_CTRL_MIRRORING) {
 								case 0b00: bus->cartridge->mirroringType = MIRROR_1SCREENA; break;
 								case 0b01: bus->cartridge->mirroringType = MIRROR_1SCREENB; break;
 								case 0b10: bus->cartridge->mirroringType = MIRROR_VERTICAL; break;
@@ -126,7 +126,7 @@ uint8_t cartridgeReadCHR(Bus *bus, uint16_t address) {
 			if (address >= 0x2000) {
 				// Nametable
 				// We rely on the register and not on bus->cartridge->mirroringType because I'm the developer and I get to make the rules
-				switch (bus->cartridge->registers[MMC1_REG_CTRL] & 0b00011) {
+				switch (bus->cartridge->registers[MMC1_REG_CTRL] & MMC1_CTRL_MIRRORING) {
 					case 0b00:
 						return bus->cartridge->internalVRAM[MIRROR_1SCA_ADDR(address)];
 					case 0b01:
@@ -138,14 +138,14 @@ uint8_t cartridgeReadCHR(Bus *bus, uint16_t address) {
 				}
 			} else {
 				// Pattern table
-				if (bus->cartridge->registers[MMC1_REG_CTRL] & 0b10000) {
+				if (bus->cartridge->registers[MMC1_REG_CTRL] & MMC1_CTRL_CHR4K_ENABLE) {
 					// 4K mode
 					if (address < 0x1000) {
 						return bus->cartridge->CHR[(address & 0x0FFF) | (bus->cartridge->registers[MMC1_REG_CHR1] << 12)];
 					}
 					return bus->cartridge->CHR[(address & 0x0FFF) | (bus->cartridge->registers[MMC1_REG_CHR2] << 12)];
 				}
-				// 16K mode
+				// 8K mode
 				return bus->cartridge->CHR[(address & 0x1FFF) | ((bus->cartridge->registers[MMC1_REG_CHR1] & 0b11110) << 12)];
 			}
 			break;
@@ -173,7 +173,7 @@ void cartridgeWriteCHR(Bus *bus, uint16_t address, uint8_t data) {
 			break;
 		
 		case MAPPER_MMC1:
-			switch (bus->cartridge->registers[MMC1_REG_CTRL] & 0b00011) {
+			switch (bus->cartridge->registers[MMC1_REG_CTRL] & MMC1_CTRL_MIRRORING) {
 				case 0b00:
 					bus->cartridge->internalVRAM[MIRROR_1SCA_ADDR(address)] = data;
 					break;
