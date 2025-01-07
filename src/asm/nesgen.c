@@ -56,6 +56,7 @@ int main(int argc, const char *argv[]) {
 
 	if (argc != 6) {
 		printf("Usage : nesgen chr prg mapper mirror out\n");
+		printf("See README for more details.\n");
 		return -0x01;
 	}
 
@@ -103,11 +104,14 @@ int main(int argc, const char *argv[]) {
 
 	status |= (fwrite(header, sizeof(uint8_t), 16, output) != 16);
 	status |= (fwrite(prg, sizeof(uint8_t), prgSize, output) != prgSize);
-	free(prg);
 	status |= !emptyFill(output, (header[4] << 14) - prgSize);
 	status |= fwrite(chr, sizeof(uint8_t), chrSize, output);
-	free(chr);
 	status |= !emptyFill(output, (header[4] << 13) - chrSize);
+
+	free(prg);
+	free(chr);
+	prg = NULL;
+	chr = NULL:
 
 	if (status) {
 		freopen(NULL, "w", output);

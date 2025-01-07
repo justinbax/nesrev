@@ -51,6 +51,7 @@ long int createShader(const char *path, GLenum type) {
 	// TODO this is not elegant, but currently needed
 	// glShaderSource doesn't accept non-const strings as source GLSL, but free doesn't accept pointers to const types, so one has to be cast to the other
 	free((char *)sourceShader);
+	sourceShader = NULL;
 
 	// Error handling
 	int status;
@@ -193,6 +194,8 @@ const Context setupContext(const int width, const int height) {
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(float) * indicesCount, indices, GL_STATIC_DRAW);
 	free(indices);
 	free(vertices);
+	indices = NULL;
+	vertices = NULL;
 
 	// Specifies the interpretation of vertex data
 	unsigned int idPositionLocation = glGetAttribLocation(context.idShaderProgram, "pos");

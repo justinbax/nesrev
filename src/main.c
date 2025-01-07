@@ -146,6 +146,7 @@ int main(int argc, char *argv[]) {
 		logFile = fopen("log.txt", "w+");
 		if (logFile == NULL) {
 			printf("Error : can't open / create log file.\n");
+			// TODO fix this (#define is """called""" regardless of the execution of the code block)
 			#define NESREV_DEBUG DBG_NONE
 		}
 	}

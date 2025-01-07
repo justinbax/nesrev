@@ -10,12 +10,14 @@
 
 // Useful
 #define CALLOC_REGS(cart) cart->registers = calloc(1, sizeof(uint8_t) * cart->registerCount)
+#define DESTROYPTR(ptr) free(ptr); ptr = NULL
 
 void freeCartridge(Cartridge *cart) {
-	free(cart->PRG);
-	free(cart->CHR);
-	free(cart->registers);
-	free(cart->persistentRAM);
+	DESTROYPTR(cart->PRG);
+	DESTROYPTR(cart->PRG);
+	DESTROYPTR(cart->CHR);
+	DESTROYPTR(cart->registers);
+	DESTROYPTR(cart->persistentRAM);
 }
 
 int loadROMFromFile(Cartridge *cart, const char *path, bool printDetails) {
@@ -35,7 +37,7 @@ int loadROMFromFile(Cartridge *cart, const char *path, bool printDetails) {
 	}
 
 	if (flags[0] != 'N' || flags[1] != 'E' || flags[2] != 'S' || flags[3] != 0x1A) {
-		if (printDetails) printf("\tError: corrupted file does not contain NES header.\n");
+		if (printDetails) printf("\tError: invalid file does not contain NES header.\n");
 		fclose(input);
 		return -0x03;
 	}
@@ -89,9 +91,9 @@ int loadROMFromFile(Cartridge *cart, const char *path, bool printDetails) {
 	if (printDetails) {
 		printf("\tMirroring type: ");
 		switch (cart->mirroringType) {
-			case MIRROR_VERTICAL: printf("vertical.\n"); break;
-			case MIRROR_HORIZONTAL: printf("horizontal.\n"); break;
-			case MIRROR_4SCREEN: printf("4 screen.\n"); break;
+			case MIRROR_VERTICAL: printf("vertical\n"); break;
+			case MIRROR_HORIZONTAL: printf("horizontal\n"); break;
+			case MIRROR_4SCREEN: printf("4 screen\n"); break;
 		}
 	}
 
